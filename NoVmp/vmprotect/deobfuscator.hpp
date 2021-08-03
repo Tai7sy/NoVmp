@@ -18,18 +18,30 @@
 #include <map>
 #include <algorithm>
 #include <linuxpe>
+#if _M_X64 || __x86_64__
 #include <vtil/amd64>
+#else
+#include <vtil/x86>
+#endif
 #include "image_desc.hpp"
 
 namespace vmp
 {
 	using namespace vtil::logger;
 
-	using fn_instruction_filter = std::function<bool( const vtil::amd64::instruction& )>;
+#if _M_X64 || __x86_64__
+	using vtil_instruction = vtil::amd64::instruction;
+	inline const auto& vtil_registers = vtil::amd64::registers;
+#else
+	using vtil_instruction = vtil::x86::instruction;
+    inline const auto& vtil_registers = vtil::x86::registers;
+#endif
+
+	using fn_instruction_filter = std::function<bool( const vtil_instruction& )>;
 
 	struct instruction_stream
 	{
-		std::vector<std::pair<int, vtil::amd64::instruction>> stream = {};
+		std::vector<std::pair<int, vtil_instruction>> stream = {};
 		instruction_stream() {};
 
 		// std::vector wrappers, stripping the index
@@ -114,12 +126,12 @@ namespace vmp
 				uint64_t write = false;
 				std::vector<x86_reg> access_list;
 
-				for ( int j = 0; j < ins.operands.size(); j++ )
+				for ( size_t j = 0; j < ins.operands.size(); j++ )
 				{
 					if ( ins.operands[ j ].type == X86_OP_REG )
 					{
 						auto reg = ins.operands[ j ].reg;
-						if ( vtil::amd64::registers.extend( reg ) != vtil::amd64::registers.extend( ireg ) )
+						if ( vtil_registers.extend( reg ) != vtil_registers.extend( ireg ) )
 						{
 							access_list.push_back( reg );
 							continue;
@@ -133,7 +145,7 @@ namespace vmp
 								ins.operands[ j ].mem.base,
 								ins.operands[ j ].mem.index } )
 						{
-							if ( vtil::amd64::registers.extend( reg ) != vtil::amd64::registers.extend( ireg ) )
+							if ( vtil_registers.extend( reg ) != vtil_registers.extend( ireg ) )
 							{
 								access_list.push_back( reg );
 								continue;
@@ -189,7 +201,7 @@ namespace vmp
 				  const std::vector<x86_op_type>& operands,
 				  int from = 0 ) const
 		{
-			for ( int i = from; i < stream.size(); i++ )
+			for ( size_t i = from; i < stream.size(); i++ )
 				if ( stream[ i ].second.is( instruction_id, operands ) ) return i;
 			return -1;
 		}
@@ -197,7 +209,7 @@ namespace vmp
 		int next( const fn_instruction_filter& filter,
 				  int from = 0 ) const
 		{
-			for ( int i = from; i < stream.size(); i++ )
+			for ( size_t i = from; i < stream.size(); i++ )
 				if ( filter( stream[ i ].second ) ) return i;
 			return -1;
 		}
@@ -207,14 +219,14 @@ namespace vmp
 				  const fn_instruction_filter& filter,
 				  int from = 0 ) const
 		{
-			for ( int i = from; i < stream.size(); i++ )
+			for ( size_t i = from; i < stream.size(); i++ )
 				if ( stream[ i ].second.is( instruction_id, operands ) && filter( stream[ i ].second ) ) return i;
 			return -1;
 		}
 
 		int prev( uint32_t instruction_id, const std::vector<x86_op_type>& operands, int from = -1 ) const
 		{
-			if ( from == -1 ) from = stream.size() - 1;
+			if ( from == -1 ) from = (int)stream.size() - 1;
 
 			for ( int i = from; i >= 0; i-- )
 				if ( stream[ i ].second.is( instruction_id, operands ) ) return i;
@@ -224,7 +236,7 @@ namespace vmp
 		int prev( const fn_instruction_filter& filter,
 				  int from = -1 ) const
 		{
-			if ( from == -1 ) from = stream.size() - 1;
+			if ( from == -1 ) from = (int)stream.size() - 1;
 
 			for ( int i = from; i >= 0; i-- )
 				if ( filter( stream[ i ].second ) ) return i;
@@ -236,7 +248,7 @@ namespace vmp
 				  const fn_instruction_filter& filter,
 				  int from = -1 ) const
 		{
-			if ( from == -1 ) from = stream.size() - 1;
+			if ( from == -1 ) from = (int)stream.size() - 1;
 
 			for ( int i = from; i >= 0; i-- )
 				if ( stream[ i ].second.is( instruction_id, operands ) && filter( stream[ i ].second ) ) return i;
@@ -278,23 +290,32 @@ namespace vmp
 		while ( true )
 		{
 
-			// Disassemble the instruction
+			// Disassemble the instruction. 
 			//
+#if _M_X64 || __x86_64__
 			std::vector i1 = vtil::amd64::disasm( img->rva_to_ptr( rva_rip ), rva_rip );
+#else
+			std::vector i1 = vtil::x86::disasm(img->rva_to_ptr(rva_rip), rva_rip);
+#endif
 			fassert( !i1.empty() );
-			vtil::amd64::instruction& instruction = i1[ 0 ];
+			vtil_instruction& instruction = i1[ 0 ];
 			output.stream.push_back( { ++instruction_idx, instruction } );
 
 			// Check if control flow deviates
 			//
-			if ( instruction.is( X86_INS_CALL, { X86_OP_IMM } ) )
-				rva_rip = instruction.operands[ 0 ].imm;
-			else if ( instruction.is( X86_INS_JMP, { X86_OP_IMM } ) )
-				rva_rip = instruction.operands[ 0 ].imm, output.stream.pop_back();
-			else if ( instruction.id == X86_INS_JMP || instruction.id == X86_INS_RET )
+			if ( instruction.is( X86_INS_CALL, { X86_OP_IMM } ) ) {
+				rva_rip = (uint32_t) instruction.operands[0].imm;
+			}
+			else if ( instruction.is( X86_INS_JMP, { X86_OP_IMM } ) ) {
+				output.stream.pop_back();
+				rva_rip = (uint32_t) instruction.operands[0].imm;
+			}
+			else if ( instruction.id == X86_INS_JMP || instruction.id == X86_INS_RET ) {
 				break;
-			else
-				rva_rip += instruction.bytes.size();
+			}
+			else {
+				rva_rip += (uint32_t)instruction.bytes.size();
+			}
 		}
 		if ( output.stream.empty() ) vtil::logger::error( "Failed to unroll control-flow." );
 		return output;

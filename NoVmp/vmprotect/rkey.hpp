@@ -18,7 +18,11 @@
 #include <vector>
 #include <optional>
 #include <variant>
+#if _M_X64 || __x86_64__
 #include <vtil/amd64>
+#else
+#include <vtil/x86>
+#endif
 #include <vtil/vtil>
 #include "../emulator/emulator.hpp"
 #include "../emulator/rwx_allocator.hpp"
@@ -37,19 +41,23 @@ namespace vmp
 
 		// Extend the register we received originally (EAX->RAX and so on)
 		//
-		out.rolling_key_register = vtil::amd64::registers.extend( state->reg_vrk );
+#if _M_X64 || __x86_64__
+		out.rolling_key_register = vtil_registers.extend( state->reg_vrk );
+#else
+		out.rolling_key_register = vtil::x86::registers.extend(state->reg_vrk);
+#endif
 
 		// Define our filters
 		//
-		auto prologue_filter = [ & ] ( const vtil::amd64::instruction& ins )
+		auto prologue_filter = [ & ] ( const vtil_instruction& ins )
 		{
 			// Type #1
 			// [ xor rbp, r8 ]
 			//
 			return ins.is( X86_INS_XOR, { X86_OP_REG, X86_OP_REG } ) &&
-				   vtil::amd64::registers.extend( ins.operands[ 1 ].reg ) == out.rolling_key_register;
+				   vtil_registers.extend( ins.operands[ 1 ].reg ) == out.rolling_key_register;
 		};
-		auto epilogue_filter = [ & ] ( const vtil::amd64::instruction& ins )
+		auto epilogue_filter = [ & ] ( const vtil_instruction& ins )
 		{
 			// Type #1
 			// [ xor r8, rbp ]
@@ -57,7 +65,7 @@ namespace vmp
 			if ( ins.is( X86_INS_XOR, { X86_OP_REG, X86_OP_REG } ) )
 			{
 				return
-					vtil::amd64::registers.extend( ins.operands[ 0 ].reg ) == out.rolling_key_register &&
+					vtil_registers.extend( ins.operands[ 0 ].reg ) == out.rolling_key_register &&
 					ins.operands[ 1 ].reg == out.output_register;
 			}
 			// Type #2
@@ -67,8 +75,13 @@ namespace vmp
 			//
 			else if ( ins.is( X86_INS_XOR, { X86_OP_MEM, X86_OP_REG } ) )
 			{
+#if _M_X64 || __x86_64__
+				constexpr auto register_sp = X86_REG_RSP;
+#else
+				constexpr auto register_sp = X86_REG_ESP;
+#endif
 				return
-					ins.operands[ 0 ].mem.base == X86_REG_RSP &&
+					ins.operands[ 0 ].mem.base == register_sp &&
 					ins.operands[ 0 ].mem.disp == 0 &&
 					ins.operands[ 0 ].mem.index == X86_REG_INVALID &&
 					ins.operands[ 0 ].mem.scale == 1 &&
@@ -111,18 +124,20 @@ namespace vmp
 		out.decrypt = [ =, block_stream = block_stream ] ( void* src, rkey_t key ) -> std::pair<rkey_value, rkey_t>
 		{
 			rkey_value value;
-			value.u64 = 0;
+			value.uptr = 0;
 			value.size = out.output_size;
-			memcpy( &value.u64, src, value.size );
+			memcpy( &value.uptr, src, value.size );
 
-			// Emulate prologue manually
+			// Emulate prologue manually ( XOR with old key )
 			//
 			switch ( value.size )
 			{
 				case 1: value.u8 ^= key; break;
 				case 2: value.u16 ^= key; break;
 				case 4: value.u32 ^= key; break;
+#if _M_X64 || __x86_64__
 				case 8: value.u64 ^= key; break;
+#endif
 			}
 
 			// Emulate the block entirely
@@ -133,9 +148,9 @@ namespace vmp
 
 			emulator emu = {};
 			emu.set( state->reg_vrk, key );
-			emu.set( out.output_register, value.u64 );
+			emu.set( out.output_register, value.uptr);
 			emu.invoke( exec_stream.data() );
-			value.u64 = emu.get( out.output_register );
+			value.uptr = emu.get( out.output_register );
 
 			// Emulate epilogue manually
 			//
@@ -144,7 +159,9 @@ namespace vmp
 				case 1: key ^= value.u8; break;
 				case 2: key ^= value.u16; break;
 				case 4: key ^= value.u32; break;
+#if _M_X64 || __x86_64__
 				case 8: key ^= value.u64; break;
+#endif
 			}
 			return { value, key };
 		};
@@ -159,7 +176,7 @@ namespace vmp
 		// Iterate entire instruction stream:
 		//
 		std::vector<rkey_block> out;
-		for ( int iterator = 0; iterator != -1 && iterator < is.stream.size(); )
+		for ( size_t iterator = 0; iterator != -1 && iterator < is.stream.size(); )
 		{
 			// Try to extract the next block
 			//

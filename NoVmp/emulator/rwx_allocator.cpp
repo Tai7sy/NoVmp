@@ -26,7 +26,7 @@
 // POSSIBILITY OF SUCH DAMAGE.        
 //
 #include "rwx_allocator.hpp"
-#if _WIN64
+#if _WIN32 || _WIN64
 	#define WIN32_LEAN_AND_MEAN
 	#define NOMINMAX
 	#include <Windows.h>
@@ -39,7 +39,7 @@ namespace mem
 {
 	// If on Windows platform, create a RWX heap.
 	//
-#if _WIN64
+#if _WIN32 || _WIN64
 	auto rwx_heap = [ ] ()
 	{
 		static HANDLE h = HeapCreate( HEAP_CREATE_ENABLE_EXECUTE, 0, 0 );
@@ -64,7 +64,7 @@ namespace mem
 	{
 		size += sizeof( rwx_mem_desc );
 
-#if _WIN64
+#if _WIN32 || _WIN64
 		// Allocate a block of RWX memory from the heap we've created.
 		//
 		void* p = HeapAlloc( rwx_heap(), HEAP_ZERO_MEMORY, size );
@@ -97,7 +97,7 @@ namespace mem
 		rwx_mem_desc* desc = ( rwx_mem_desc* ) pointer - 1;
 		fassert( desc->magic == rwx_mem_magic );
 
-#if _WIN64
+#if _WIN32 || _WIN64
 		// Free the heap memory we've allocated.
 		//
 		HeapFree( rwx_heap(), 0, desc );

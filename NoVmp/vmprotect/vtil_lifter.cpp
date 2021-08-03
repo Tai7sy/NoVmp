@@ -37,7 +37,7 @@ namespace vmp
 			// Reloc base is always at the top of virtual stack upon block begin,
 			// create the base-address offset evaluator using it.
 			//
-			vtil::symbolic::pointer reloc_base =
+			const vtil::symbolic::pointer reloc_base =
 				vtil::symbolic::variable{ block->begin(), vtil::REG_SP }.to_expression();
 			auto eval = [ & ] ( const vtil::symbolic::unique_identifier& uid )
 				-> std::optional<uint64_t>
@@ -70,7 +70,7 @@ namespace vmp
 
 					// If in a read-only section:
 					//
-					if ( auto section = vstate->img->rva_to_section( rva ) )
+					if ( auto section = vstate->img->rva_to_section( (uint32_t)rva ) )
 					{
 						if ( !section->characteristics.mem_write )
 						{
@@ -80,7 +80,7 @@ namespace vmp
 
 							memcpy(
 								&value,
-								vstate->img->rva_to_ptr( rva ),
+								vstate->img->rva_to_ptr( (uint32_t)rva ),
 								it->access_size() / 8
 							);
 
@@ -107,7 +107,12 @@ namespace vmp
 			//
 			if ( !block )
 			{
-				block = vtil::basic_block::begin( entry_vip );
+#if _M_X64 || __x86_64__
+				constexpr auto architecture = vtil::architecture_amd64;
+#else
+				constexpr auto architecture = vtil::architecture_x86;
+#endif
+				block = vtil::basic_block::begin( entry_vip, architecture );
 			}
 			// Otherwise, fork the block.
 			//
@@ -135,7 +140,7 @@ namespace vmp
 
 			// Push relocation offset.
 			//
-			auto treloc = block->tmp( 64 );
+			auto treloc = block->tmp( vtil::arch::bit_count );
 			block->mov( treloc, vtil::REG_IMGBASE )
 				 ->sub( treloc, vstate->img->get_real_image_base() )
 				 ->push( treloc );
@@ -157,7 +162,7 @@ namespace vmp
 				throw std::runtime_error( "Whoooops invalid virtual jump." );
 			}
 
-			// Unroll the stream
+			// Unroll the stream of next handler 
 			//
 			instruction_stream is = vstate->unroll();
 
@@ -207,7 +212,7 @@ namespace vmp
 
 				// Pop target from stack.
 				//
-				vtil::operand jmp_dest = block->tmp( 64 );
+				vtil::operand jmp_dest = block->tmp( vtil::arch::bit_count );
 				block->pop( jmp_dest );
 
 				// Insert vexit to the location.
@@ -241,18 +246,18 @@ namespace vmp
 					// Try to read from the top of the stack.
 					//
 					auto continue_from = ( tracer.rtrace_p( { std::prev( block->end() ),
-										   { tracer( { std::prev( block->end() ), vtil::REG_SP } ) + block->sp_offset, 64 } } ) -
+										   { tracer( { std::prev( block->end() ), vtil::REG_SP } ) + block->sp_offset, vtil::arch::bit_count } } ) -
 										   (vstate->img->has_relocs ? vtil::symbolic::variable{ {}, vtil::REG_IMGBASE }.to_expression() : vtil::symbolic::expression{ vstate->img->get_real_image_base() })).simplify( true );
 #if DISCOVERY_VERBOSE_OUTPUT
 					log( "continue => %s\n", continue_from.to_string() );
 #endif
 					// If constant and is in VMP section:
 					//
-					if ( continue_from.is_constant() && is_rva_in_vmp_scn( *continue_from.get() ) )
+					if ( continue_from.is_constant() && is_rva_in_vmp_scn( (uint32_t)*continue_from.get() ) )
 					{
 						// If return address points to a PUSH IMM32, aka VMENTER.
 						//
-						auto disasm = deobfuscate( vstate->img, *continue_from.get() );
+						auto disasm = deobfuscate( vstate->img, (uint32_t)*continue_from.get() );
 						if ( disasm.size() && disasm[ 0 ].is( X86_INS_PUSH, { X86_OP_IMM } ) )
 						{
 							// Convert into vxcall and indicate that push is implicit by
@@ -318,7 +323,7 @@ namespace vmp
 
 							// Continue lifting from the linked virtual machine.
 							//
-							vm_state state = { vstate->img, *continue_from.get() };
+							vm_state state = { vstate->img, (uint32_t)*continue_from.get() };
 							lift_il( block, &state );
 							break;
 						}
@@ -328,7 +333,7 @@ namespace vmp
 				// Reached real exit, determine destination.
 				//
 				auto exit_destination = jmp_dest.is_immediate()
-					? vtil::symbolic::expression{ jmp_dest.imm().u64, jmp_dest.bit_count() }
+					? vtil::symbolic::expression{ jmp_dest.imm().uval, jmp_dest.bit_count() }
 					: (tracer.rtrace_p({ std::prev(block->end()), jmp_dest.reg() }) - (vstate->img->has_relocs ? vtil::symbolic::variable{ {}, vtil::REG_IMGBASE }.to_expression() : vtil::symbolic::expression{ vstate->img->get_real_image_base() })).simplify(true);
 #if DISCOVERY_VERBOSE_OUTPUT
 				log( "exit => %s\n", exit_destination.to_string() );
@@ -336,7 +341,7 @@ namespace vmp
 
 				// If constant and is in VMP section:
 				//
-				if ( exit_destination.is_constant() && is_rva_in_vmp_scn( *exit_destination.get() ) )
+				if ( exit_destination.is_constant() && is_rva_in_vmp_scn((uint32_t)*exit_destination.get() ) )
 				{
 					// Pop the VMEXIT.
 					//
@@ -344,7 +349,7 @@ namespace vmp
 
 					// Extract the non-virtualized chunk before VMENTER.
 					//
-					auto is = deobfuscate( vstate->img, *exit_destination.get() );
+					auto is = deobfuscate( vstate->img, (uint32_t)*exit_destination.get() );
 
 					instruction_stream non_virt_chunk = {};
 					while ( true )
@@ -367,21 +372,32 @@ namespace vmp
 					//
 					for ( auto& [id, ins] : non_virt_chunk.stream )
 					{
-						if ( ins.is( X86_INS_PUSHFQ, {} ) )
+#if _M_X64 || __x86_64__
+						constexpr auto register_sp = X86_REG_RSP;
+						constexpr auto ins_pushf = X86_INS_PUSHFQ;
+						constexpr auto ins_popf = X86_INS_POPFQ;
+#else
+						constexpr auto register_sp = X86_REG_ESP;
+						constexpr auto ins_pushf = X86_INS_PUSHFD;
+						constexpr auto ins_popf = X86_INS_POPFD;
+#endif
+
+						if ( ins.is( ins_pushf, {} ) )
 						{
 							block->pushf();
 							continue;
 						}
-						else if ( ins.is( X86_INS_POPFQ, {} ) )
+						else if ( ins.is( ins_popf, {} ) )
 						{
 							block->popf();
 							continue;
 						}
 
+
 						for ( auto reg_read : ins.regs_read )
 						{
 							vtil::operand op = x86_reg( reg_read );
-							if ( reg_read == X86_REG_RSP ) op = { vtil::REG_SP };
+							if ( reg_read == register_sp ) op = { vtil::REG_SP };
 							if ( reg_read == X86_REG_EFLAGS ) op = { vtil::REG_FLAGS };
 							block->vpinr( op );
 						}
@@ -392,7 +408,7 @@ namespace vmp
 						for ( auto reg_write : ins.regs_write )
 						{
 							vtil::operand op = x86_reg( reg_write );
-							fassert( reg_write != X86_REG_RSP );
+							fassert( reg_write != register_sp );
 							if ( reg_write == X86_REG_EFLAGS ) op = { vtil::REG_FLAGS };
 							block->vpinw( op );
 						}
@@ -404,12 +420,12 @@ namespace vmp
 
 					// Continue lifting from the linked virtual machine.
 					//
-					vm_state state = { vstate->img, is[ 0 ].address };
+					vm_state state = { vstate->img, (uint32_t) is[ 0 ].address };
 					auto block_next = lift_il( block, &state );
 					
 					// Replace the destination of the jump.
 					//
-					block->wback().operands[ 0 ] = { block_next->entry_vip, 64 };
+					block->wback().operands[ 0 ] = { block_next->entry_vip, vtil::arch::bit_count };
 					break;
 				}
 
@@ -460,7 +476,7 @@ namespace vmp
 
 					// Fork the current flow and parse as a seperate block.
 					//
-					vstate->next( rkblocks.back(), vip_params, self_ref_point.value() );
+					vstate->next( rkblocks.back(), (uint32_t)vip_params, (uint32_t)self_ref_point.value() );
 					lift_il( block->fork( dst ), vstate );
 					return block;
 				}
@@ -468,7 +484,7 @@ namespace vmp
 				{
 					// Pop target from stack.
 					//
-					auto jmp_dest = block->tmp( 64 );
+					auto jmp_dest = block->tmp( vtil::arch::bit_count );
 					block->pop( jmp_dest );
 
 					if ( vstate->dir_vip < 0 )
@@ -552,7 +568,7 @@ namespace vmp
 #endif
 						vm_state vstate_dup = *vstate;
 						vstate_dup.vip = dst + ( vstate->dir_vip < 0 ? +1 : 0 );
-						vstate_dup.next( rkblocks.back(), vstate_dup.vip, self_ref_point.value() );
+						vstate_dup.next( rkblocks.back(), (uint32_t)vstate_dup.vip, (uint32_t)self_ref_point.value());
 						lift_il( block->fork( dst ), &vstate_dup );
 					};
 

@@ -53,12 +53,19 @@ namespace vmp
 			} ), is.stream.end() );
 
 			// Append fake instruction
-			vtil::amd64::instruction ins;
+			// > MOV r64, imm64
+			vtil_instruction ins;
 			ins.address = -1;
 			ins.id = X86_INS_INVALID;
 			ins.mnemonic = "loadc";
+#if _M_X64 || __x86_64__
 			ins.operand_string = vtil::amd64::name( block->output_register );
 			ins.operand_string += ", " + std::to_string( parameter_pair.second.u64 );
+#else
+			ins.operand_string = vtil::x86::name( block->output_register );
+			ins.operand_string += ", " + std::to_string( parameter_pair.second.u32 );
+#endif
+			
 			ins.regs_write.insert( block->output_register );
 
 			ins.operands.resize( 2 );
@@ -69,7 +76,11 @@ namespace vmp
 			ins.operands[ 0 ].size = block->output_size;
 
 			ins.operands[ 1 ].type = X86_OP_IMM;
-			ins.operands[ 1 ].imm = parameter_pair.second.u64;
+#if _M_X64 || __x86_64__
+			ins.operands[ 1 ].imm = parameter_pair.second.i64;
+#else
+			ins.operands[ 1 ].imm = parameter_pair.second.i32;
+#endif
 			ins.operands[ 1 ].size = block->output_size;
 			is.stream.push_back( { i_1, ins } );
 
@@ -79,8 +90,13 @@ namespace vmp
 
 		// Trace all changes to RSP and VSP
 		//
+#if _M_X64 || __x86_64__
+		constexpr auto register_sp = X86_REG_RSP;
+#else
+		constexpr auto register_sp = X86_REG_ESP;
+#endif
 		std::map<x86_reg, bool> traced = {};
-		traced[ X86_REG_RSP ] = true;
+		traced[ register_sp ] = true;
 		traced[ vstate->reg_vsp ] = true;
 
 		// If JA is present, always take the branch
@@ -92,22 +108,24 @@ namespace vmp
 		// Trace the instruction from the end of the control flow
 		//
 		instruction_stream is_reduced = {};
-		for ( int i = is.stream.size() - 1; i >= 0; i-- )
+		for ( auto i = (int32_t)is.stream.size() - 1; i >= 0; i-- )
 		{
 			auto& ins = is[ i ];
 
 			// Skip if we hit the xor block preceding the decryption rkb
 			//
 			if ( has_next &&
-				 ins.id > parameters.back().first->block_start.first&&
+				 ins.id > parameters.back().first->block_start.first &&
 				 ins.is( X86_INS_XOR, { X86_OP_MEM, X86_OP_REG } ) &&
-				 ins.operands[ 0 ].mem.base == X86_REG_RSP &&
-				 vtil::amd64::registers.extend( ins.operands[ 1 ].reg ) == vtil::amd64::registers.extend( parameters.back().first->output_register ) )
+				 ins.operands[ 0 ].mem.base == register_sp &&
+				 vtil_registers.extend( ins.operands[ 1 ].reg ) == vtil_registers.extend( parameters.back().first->output_register ) )
 			{
+				vtil::logger::error( "Why there is still a key block ??? " );
 				continue;
 			}
+
 			// Blacklist certain instructions as they
-			// mess up with our vtil::amd64::registers.extend logic or FLAGS
+			// mess up with our vtil_registers.extend logic or FLAGS
 			//
 			if ( ins.id == X86_INS_CQO ||
 				 ins.id == X86_INS_CWD ||
@@ -136,7 +154,12 @@ namespace vmp
 			}
 			// PUSHFQ is always logged
 			//
-			if ( ins.is( X86_INS_PUSHFQ, {} ) )
+#if _M_X64 || __x86_64__
+			constexpr auto ins_pushf = X86_INS_PUSHFQ;
+#else
+			constexpr auto ins_pushf = X86_INS_PUSHFD;
+#endif
+			if ( ins.is( ins_pushf, {} ) )
 			{
 				// Nothing to trace
 				//
@@ -151,16 +174,16 @@ namespace vmp
 			std::map<x86_reg, bool> writes;
 			uint64_t mem_read = false;
 			uint64_t mem_write = false;
-			uint32_t eflags_write = ins.eflags;
+			uint64_t eflags_write = ins.eflags;
 
 			for ( auto& op : ins.operands )
 			{
 				if ( op.type == X86_OP_REG )
 				{
 					if ( op.access & CS_AC_READ )
-						reads[ vtil::amd64::registers.extend( op.reg ) ] = true;
+						reads[ vtil_registers.extend( op.reg ) ] = true;
 					if ( op.access & CS_AC_WRITE )
-						writes[ vtil::amd64::registers.extend( op.reg ) ] = true;
+						writes[ vtil_registers.extend( op.reg ) ] = true;
 				}
 				else if ( op.type == X86_OP_MEM )
 				{
@@ -169,7 +192,7 @@ namespace vmp
 						op.mem.index } )
 					{
 						if ( reg != X86_REG_INVALID )
-							reads[ vtil::amd64::registers.extend( reg ) ] = true;
+							reads[ vtil_registers.extend( reg ) ] = true;
 					}
 
 					mem_read |= op.access & CS_AC_READ;
@@ -182,8 +205,8 @@ namespace vmp
 			//
 			for ( uint16_t _r : ins.regs_read )
 			{
-				x86_reg r = vtil::amd64::registers.extend( _r );
-				if ( r == X86_REG_EFLAGS || r == X86_REG_RSP ) continue;
+				x86_reg r = vtil_registers.extend( _r );
+				if ( r == X86_REG_EFLAGS || r == register_sp ) continue;
 				// CPUID:RCX exception
 				if ( ins.id == X86_INS_CPUID && r == X86_REG_RCX ) continue;
 				reads[ r ] = true;
@@ -191,8 +214,8 @@ namespace vmp
 
 			for ( uint16_t _r : ins.regs_write )
 			{
-				x86_reg r = vtil::amd64::registers.extend( _r );
-				if ( r == X86_REG_EFLAGS || r == X86_REG_RSP ) continue;
+				x86_reg r = vtil_registers.extend( _r );
+				if ( r == X86_REG_EFLAGS || r == register_sp ) continue;
 				writes[ r ] = true;
 			}
 
@@ -226,6 +249,9 @@ namespace vmp
 			}
 		}
 
+		// puts(is.normalize().to_string().c_str());
+		// puts(is_reduced.normalize().to_string().c_str());
+
 		// Replace input stream with the reduced stream
 		//
 		is.stream = is_reduced.stream;
@@ -236,20 +262,34 @@ namespace vmp
 	//
 	void update_vrk( vm_state* state, const instruction_stream& is )
 	{
-		// Find new rolling key register
+#if _M_X64 || __x86_64__
+		// Find new rolling key register, ( xor [rsp], r64 )
 		//
-		int i_enc_end = is.next( X86_INS_XOR, { X86_OP_MEM, X86_OP_REG }, [ & ] ( const vtil::amd64::instruction& ins )
+		int i_enc_end = is.next( X86_INS_XOR, { X86_OP_MEM, X86_OP_REG }, [ & ] ( const vtil_instruction& ins )
 		{
+#if _M_X64 || __x86_64__
+				constexpr auto register_sp = X86_REG_RSP;
+#else
+				constexpr auto register_sp = X86_REG_ESP;
+#endif
 			return
-				ins.operands[ 0 ].mem.base == X86_REG_RSP &&
+				ins.operands[ 0 ].mem.base == register_sp &&
 				ins.operands[ 0 ].mem.disp == 0 &&
 				ins.operands[ 0 ].mem.index == X86_REG_INVALID &&
 				ins.operands[ 0 ].mem.scale == 1;
 		} );
 		fassert( i_enc_end != -1 );
+
+		// Find first pop r64, so r64 = [rsp], the next key
+		// 
 		int i_pop = is.next( X86_INS_POP, { X86_OP_REG }, i_enc_end );
 		fassert( i_pop != -1 );
 		state->reg_vrk = is[ i_pop ].operands[ 0 ].reg;
+#else
+
+		state->reg_vrk = X86_REG_EBX;
+
+#endif
 	}
 
 	// Deduces the virtual instruction stream direction from the given instruction stream
@@ -258,7 +298,7 @@ namespace vmp
 	{
 		// Define the filters based on the way VIP stream is read
 		//
-		auto fwd_filter = [ & ] ( const vtil::amd64::instruction& ins )
+		auto fwd_filter = [ & ] ( const vtil_instruction& ins )
 		{
 			// Type #1:
 			// [ add rbp, 4 ]
@@ -282,7 +322,7 @@ namespace vmp
 			}
 			return false;
 		};
-		auto bwd_filter = [ & ] ( const vtil::amd64::instruction& ins )
+		auto bwd_filter = [ & ] ( const vtil_instruction& ins )
 		{
 			// Type #1:
 			// [ sub rbp, 4 ]
@@ -324,9 +364,12 @@ namespace vmp
 	//
 	std::optional<uint64_t> find_self_ref( vm_state* state, const instruction_stream& is, int index )
 	{
+
+#if _M_X64 || __x86_64__
+
 		// Find the first LEA r64, [$]
 		//
-		int i_ref_self = is.next( X86_INS_LEA, { X86_OP_REG, X86_OP_MEM }, [ & ] ( const vtil::amd64::instruction& ins )
+		int i_ref_self = is.next( X86_INS_LEA, { X86_OP_REG, X86_OP_MEM }, [ & ] ( const vtil_instruction& ins )
 		{
 			return
 				ins.operands[ 1 ].mem.disp == -7 &&
@@ -334,6 +377,19 @@ namespace vmp
 				ins.operands[ 1 ].mem.base == X86_REG_RIP &&
 				ins.operands[ 1 ].mem.index == X86_REG_INVALID;
 		}, index );
+#else
+		// Find the first lea r32, IMM (self eip)
+        //
+		int i_ref_self = is.next(X86_INS_LEA, { X86_OP_REG, X86_OP_MEM }, [&](const vtil_instruction& ins)
+			{
+				return
+					ins.operands[1].mem.disp == state->img->get_mapped_image_base() + ins.address &&
+					ins.operands[1].mem.scale == 1 &&
+					ins.operands[1].mem.base == X86_REG_INVALID &&
+					ins.operands[1].mem.index == X86_REG_INVALID;
+			}, index);
+#endif
+
 		if ( i_ref_self == -1 ) return {};
 		else return { is[ i_ref_self ].address };
 	}
@@ -346,45 +402,76 @@ namespace vmp
 	{
 		// Unroll the stream
 		//
-		auto is = deobfuscate( vstate->img, rva_ep );
+		instruction_stream is = deobfuscate( vstate->img, rva_ep );
 
 		// Instruction stream should start with a 32 bit constant being pushed which is the 
 		// encrypted offset to the beginning of the virtual instruction stream
 		//
 		fassert( is[ 0 ].is( X86_INS_PUSH, { X86_OP_IMM } ) );
-		uint32_t vip_offset_encrypted = is[ 0 ].operands[ 0 ].imm;
+		uint32_t vip_offset_encrypted = (uint32_t)is[ 0 ].operands[ 0 ].imm;
 
-		// Resolve the stack composition
+		// Resolve the real stack composition
 		//
 		x86_reg reg_reloc_delta;
 		std::vector<vtil::operand> stack =
 		{
-			{ vip_offset_encrypted, 64 },
-		{ vstate->img->get_real_image_base() + is[ 0 ].address + is[ 0 ].bytes.size() + 5, 64 }
+			{ vip_offset_encrypted, vtil::arch::bit_count }, // push vmp_key
+			{ vstate->img->get_real_image_base() + is[ 0 ].address + is[ 0 ].bytes.size() + 5, vtil::arch::bit_count } // call vmp0.xxx, return ip
 		};
+
+#if _M_X64 || __x86_64__
+		constexpr auto is64 = true;
+		constexpr auto register_sp =  X86_REG_RSP;
 
 		for ( int i = 0;; i++ )
 		{
 			// If PUSH R64
 			if ( is[ i ].is( X86_INS_PUSH, { X86_OP_REG } ) )
 				stack.push_back( is[ i ].operands[ 0 ].reg );
+
 			// If PUSHFQ
 			if ( is[ i ].is( X86_INS_PUSHFQ, {} ) )
 				stack.push_back( vtil::REG_FLAGS );
 
 			// End of pushed registers, reset stream
-			if ( is[ i ].is( X86_INS_MOVABS, { X86_OP_REG,  X86_OP_IMM } ) )
-			{
+			if ( is[ i ].is( X86_INS_MOVABS, { X86_OP_REG,  X86_OP_IMM } ) ) {
 				reg_reloc_delta = is[ i ].operands[ 0 ].reg;
 				is.erase( i - 1 );
 				break;
 			}
 		}
+
 		fassert( stack.size() == ( 16 + 2 ) );
+
+#else
+		constexpr auto is64 = false;
+		constexpr auto register_sp = X86_REG_ESP;
+
+		for (int i = 0;; i++)
+		{
+			// If PUSH R32
+			if ( is[ i ].is( X86_INS_PUSH, { X86_OP_REG } ) )
+				stack.push_back( is[ i ].operands[ 0 ].reg );
+
+			// If PUSHFD
+			if ( is[ i ].is( X86_INS_PUSHFD, {} ) )
+				stack.push_back( vtil::REG_FLAGS );
+
+			// End of pushed registers, reset stream
+			if ( stack.size() == 8 + 2 && 
+				 is[ i ].is( X86_INS_MOV, { X86_OP_REG,  X86_OP_IMM } ) ) {
+				reg_reloc_delta = is[ i ].operands[ 0 ].reg;
+				is.erase( i - 1 );
+				break;
+			}
+		}
+
+		fassert( stack.size() == ( 8 + 2 ) );
+#endif
 
 		// Resolve the stack composition
 		//
-		uint32_t ep_vip_offset = stack.size() * 8;
+		auto ep_vip_offset = uint32_t (stack.size() * (is64 ? 8 : 4));
 
 		// Resolve the register mapped to be VSP
 		//
@@ -393,16 +480,16 @@ namespace vmp
 		{
 			// Find the first MOV r64, RSP
 			//
-			i_save_registers_id = is.next( X86_INS_MOV, { X86_OP_REG, X86_OP_REG }, [ & ] ( const vtil::amd64::instruction& ins )
+			i_save_registers_id = is.next( X86_INS_MOV, { X86_OP_REG, X86_OP_REG }, [ & ] ( const vtil_instruction& ins )
 			{
-				return ins.operands[ 1 ].reg == X86_REG_RSP;
+				return ins.operands[ 1 ].reg == register_sp;
 			}, i_save_registers_id );
 			fassert( i_save_registers_id != -1 );
 			vstate->reg_vsp = is[ i_save_registers_id ].operands[ 0 ].reg;
 
-			// Check for any false positives
+			// Check for any false positives, vsp should be assigned only once.
 			//
-			auto [vsp_ss, vsp_dep] = is.trace( vstate->reg_vsp, is.stream.size() - 1 );
+			auto [vsp_ss, vsp_dep] = is.trace( vstate->reg_vsp, (int)is.stream.size() - 1 );
 			if ( vsp_ss.stream.size() != 1 ||
 				 vsp_ss[ 0 ].address != is[ i_save_registers_id ].address )
 			{
@@ -412,20 +499,20 @@ namespace vmp
 			break;
 		}
 
-		// Find the first stack access
+		// Find the first stack access ( For example: mov rsi, [rsp+90h], rsi = VENTER pushed imm32 )
 		//
-		int i_load_vip_id = is.next( X86_INS_MOV, { X86_OP_REG, X86_OP_MEM }, [ & ] ( const vtil::amd64::instruction& ins )
+		int i_load_vip_id = is.next( X86_INS_MOV, { X86_OP_REG, X86_OP_MEM }, [ & ] ( const vtil_instruction& ins )
 		{
 			return
-				ins.operands[ 1 ].mem.base == X86_REG_RSP &&
+				ins.operands[ 1 ].mem.base == register_sp &&
 				ins.operands[ 1 ].mem.disp == ep_vip_offset;
 		} );
 		fassert( i_load_vip_id != -1 );
 		vstate->reg_vip = is[ i_load_vip_id ].operands[ 0 ].reg;
 
-		// Find the first ADD r, x or LEA r, [r+x]
+		// Find the first ADD r, x or LEA r, [r+x] ( For example: lea rsi, [rsi+rbp], which add vip with reloc_delta )
 		//
-		auto vip_d_epi_filter = [ & ] ( const vtil::amd64::instruction& ins )
+		auto vip_d_epi_filter = [ & ] ( const vtil_instruction& ins )
 		{
 			if ( ins.is( X86_INS_ADD, { X86_OP_REG, X86_OP_REG } ) )
 			{
@@ -456,22 +543,27 @@ namespace vmp
 		);
 		fassert( vip_dec_ss_dep.empty() );
 
-		// Cleanup the stream again
+		// Delete the stream before i_add_base_id
 		//
 		is.erase( i_add_base_id );
 
 		// Decrypt the VIP entry point
 		//
-		std::vector raw_stream = vip_dec_ss.to_raw();
+		std::vector<uint8_t> raw_stream = vip_dec_ss.to_raw();
 		std::vector<uint8_t, mem::rwx_allocator<uint8_t>> exec_stream = { raw_stream.begin(), raw_stream.end() };
 		exec_stream.push_back( 0xC3 );
 		emulator emu = {};
 		emu.set( vstate->reg_vip, vip_offset_encrypted );
 		emu.invoke( exec_stream.data() );
-		static constexpr uint64_t default_image_base = 0x100000000;
-		uint32_t rva_vip0 = emu.get( vstate->reg_vip ) + default_image_base - vstate->img->get_real_image_base();
+#if _M_X64 || __x86_64__
+		static constexpr uint64_t image_base_offset = 0x100000000;
+#else
+		static constexpr uint64_t image_base_offset = 0;
+#endif
+		uint32_t rva_vip0 = uint32_t( emu.get( vstate->reg_vip ) + image_base_offset - vstate->img->get_real_image_base() );
 
-		// Find our reference point
+		// Find our reference point, a instrument to get RIP
+		// ( VMP will calc new rva, and add with RIP at ref_point to jmp to next handler )
 		//
 		auto ref_point = find_self_ref( vstate, is );
 		fassert( ref_point.has_value() );
@@ -491,7 +583,7 @@ namespace vmp
 
 		// Skip to next handler
 		//
-		vstate->next( rkeyb, rva_vip0, ref_point.value() );
+		vstate->next( rkeyb, rva_vip0, (uint32_t) ref_point.value() );
 
 		// Return the content pushed on stack in order
 		//
@@ -502,6 +594,12 @@ namespace vmp
 	//
 	std::vector<vtil::operand> parse_vmexit( vm_state* vstate, const instruction_stream& is )
 	{
+#if _M_X64 || __x86_64__
+		constexpr auto ins_popf = X86_INS_POPFQ;
+#else
+		constexpr auto ins_popf = X86_INS_POPFD;
+#endif
+
 		// Resolve popped registers
 		//
 		std::vector<vtil::operand> stack;
@@ -511,7 +609,7 @@ namespace vmp
 			if ( is[ i ].is( X86_INS_POP, { X86_OP_REG } ) )
 				stack.push_back( is[ i ].operands[ 0 ].reg );
 			// If POPFW
-			if ( is[ i ].is( X86_INS_POPFQ, {} ) )
+			if ( is[ i ].is( ins_popf, {} ) )
 				stack.push_back( vtil::REG_FLAGS );
 			// End of pushed registers, reset stream
 			if ( is[ i ].is( X86_INS_RET, {} ) )
@@ -546,7 +644,7 @@ namespace vmp
 				std::map<x86_reg, std::pair<int, x86_reg>> register_mappings;
 				for ( int i = 0; i < X86_REG_ENDING; i++ )
 				{
-					x86_reg r = vtil::amd64::registers.extend( ( x86_reg ) i );
+					x86_reg r = vtil_registers.extend( ( x86_reg ) i );
 					register_mappings[ r ] = { 0, r };
 				}
 
@@ -610,7 +708,7 @@ namespace vmp
 
 				// Strip any assigning pre-mutation
 				//
-				for ( int i = prefix_out.size() - 1; i >= 0; i-- )
+				for ( size_t i = prefix_out.size() - 1; i >= 0; i-- )
 				{
 					if ( prefix_out[ i ].is( X86_INS_MOV, { X86_OP_REG, X86_OP_REG } ) ||
 						 prefix_out[ i ].is( X86_INS_XCHG, { X86_OP_REG, X86_OP_REG } ) )

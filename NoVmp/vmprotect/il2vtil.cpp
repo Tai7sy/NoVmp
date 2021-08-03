@@ -14,7 +14,11 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 #include "il2vtil.hpp"
+#if _M_X64 || __x86_64__
 #include <vtil/amd64>
+#else
+#include <vtil/x86>
+#endif
 #include <vtil/arch>
 #include <functional>
 #include <vector>
@@ -35,7 +39,7 @@ namespace vmp
 			if ( ins.op.size() != base_op.size() ) return false;
 
 			std::vector<uint8_t> variants = {};
-			for ( int i = 0; i < ins.op.size(); i++ )
+			for ( size_t i = 0; i < ins.op.size(); i++ )
 			{
 				if ( ins.op[ i ] == base_op[ i ] ) continue;
 				if ( base_op[ i ] != '*' ) return {};
@@ -55,23 +59,23 @@ namespace vmp
 	// Add per/bit flag addressing and vtil::UNDEFINED register.
 	// - Ugly yeah but don't want to tailor the repo with arch-dependent code.
 	//
-	static constexpr vtil::register_desc FLAG_CF = vtil::REG_FLAGS.select( 1, 0 );
-	static constexpr vtil::register_desc FLAG_PF = vtil::REG_FLAGS.select( 1, 2 );
-	static constexpr vtil::register_desc FLAG_AF = vtil::REG_FLAGS.select( 1, 4 );
-	static constexpr vtil::register_desc FLAG_ZF = vtil::REG_FLAGS.select( 1, 6 );
-	static constexpr vtil::register_desc FLAG_SF = vtil::REG_FLAGS.select( 1, 7 );
-	static constexpr vtil::register_desc FLAG_DF = vtil::REG_FLAGS.select( 1, 10 );
-	static constexpr vtil::register_desc FLAG_OF = vtil::REG_FLAGS.select( 1, 11 );
+	static vtil::register_desc FLAG_CF = vtil::REG_FLAGS.select( 1, 0 );
+	static vtil::register_desc FLAG_PF = vtil::REG_FLAGS.select( 1, 2 );
+	static vtil::register_desc FLAG_AF = vtil::REG_FLAGS.select( 1, 4 );
+	static vtil::register_desc FLAG_ZF = vtil::REG_FLAGS.select( 1, 6 );
+	static vtil::register_desc FLAG_SF = vtil::REG_FLAGS.select( 1, 7 );
+	static vtil::register_desc FLAG_DF = vtil::REG_FLAGS.select( 1, 10 );
+	static vtil::register_desc FLAG_OF = vtil::REG_FLAGS.select( 1, 11 );
 
-	static constexpr vtil::register_desc make_virtual_register( uint8_t context_offset, uint8_t size )
+	static vtil::register_desc make_virtual_register( uint8_t context_offset, uint8_t size )
 	{
 		fassert( ( ( context_offset & 7 ) + size ) <= 8 && size );
 
 		return {
 			vtil::register_virtual,
-			( size_t ) context_offset / 8,
+			( size_t ) context_offset / vtil::arch::size,
 			size * 8,
-			( context_offset % 8 ) * 8
+			( context_offset % vtil::arch::size ) * vtil::arch::size
 		};
 	}
 
@@ -84,7 +88,7 @@ namespace vmp
 				auto& p = ins.parameters;
 				fl
 					// pop vrN
-					->pop( make_virtual_register( p[ 0 ], v ) );
+					->pop( make_virtual_register( (uint8_t) p[ 0 ], v ) );
 			}
 		},
 
@@ -117,7 +121,7 @@ namespace vmp
 				auto& p = ins.parameters;
 				fl
 					// push vrN
-					->push( make_virtual_register( p[ 0 ], v ) );
+					->push( make_virtual_register((uint8_t) p[ 0 ], v ) );
 
 			}
 		},
@@ -438,7 +442,7 @@ namespace vmp
 			[ ] ( vtil::basic_block* fl, const arch::instruction& ins, uint8_t v )
 			{
 				auto& p = ins.parameters;
-				auto [t0, t1] = fl->tmp( 64, v * 8 );
+				auto [t0, t1] = fl->tmp( vtil::arch::bit_count, v * 8 );
 
 				fl
 					// t0 := [rsp]
@@ -457,7 +461,7 @@ namespace vmp
 					unreachable();
 				}
 
-				fl  ->ldd( t1, t0, vtil::make_imm( 0ull ) )
+				fl  ->ldd( t1, t0, vtil::make_imm( (uintptr_t) 0 ) )
 					->push( t1 );
 			}
 		},
@@ -466,7 +470,7 @@ namespace vmp
 			[ ] ( vtil::basic_block* fl, const arch::instruction& ins, uint8_t v )
 			{
 				auto& p = ins.parameters;
-				auto [t0, t1] = fl->tmp( 64, v * 8 );
+				auto [t0, t1] = fl->tmp( vtil::arch::bit_count, v * 8 );
 
 				fl
 					// t0 := [rsp]
@@ -487,7 +491,7 @@ namespace vmp
 				}
 
 				fl  
-					->str( t0, vtil::make_imm( 0ull ), t1 );
+					->str( t0, vtil::make_imm( (uintptr_t) 0 ), t1 );
 			}
 		},
 		{
@@ -516,7 +520,7 @@ namespace vmp
 			[ ] ( vtil::basic_block* fl, const arch::instruction& ins, uint8_t v )
 			{
 				auto& p = ins.parameters;
-				auto t0 = fl->tmp( 64 );
+				auto t0 = fl->tmp( vtil::arch::bit_count );
 
 				fl
 					// t0 := [rsp],
@@ -530,6 +534,14 @@ namespace vmp
 			"VEMIT",
 			[ ] ( vtil::basic_block* fl, const arch::instruction& ins, uint8_t v )
 			{
+			    #if _M_X64 || __x86_64__
+				constexpr auto register_sp = X86_REG_RSP;
+				constexpr auto register_ip = X86_REG_RIP;
+				#else
+				constexpr auto register_sp = X86_REG_ESP;
+				constexpr auto register_ip = X86_REG_EIP;
+				#endif
+
 				auto& p = ins.parameters;
 
 				for ( auto& instr : ins.stream.stream )
@@ -537,7 +549,7 @@ namespace vmp
 					// Pin read registers
 					//
 					for ( uint16_t reg : instr.second.regs_read )
-						if ( reg != X86_REG_RSP && reg != X86_REG_RIP && reg != X86_REG_EFLAGS )
+						if ( reg != register_sp && reg != register_ip && reg != X86_REG_EFLAGS )
 							fl->vpinr( vtil::operand( x86_reg( reg ) ) );
 
 					// Emit all bytes
@@ -548,7 +560,7 @@ namespace vmp
 					// Pin written registers
 					//
 					for ( uint16_t reg : instr.second.regs_write )
-						if ( reg != X86_REG_RSP && reg != X86_REG_RIP && reg != X86_REG_EFLAGS )
+						if ( reg != register_sp && reg != register_ip && reg != X86_REG_EFLAGS )
 							fl->vpinw( vtil::operand( x86_reg( reg ) ) );
 				}
 			}
@@ -636,7 +648,7 @@ namespace vmp
 					v == 2 ? "lock xchg word ptr [rdx], ax" :
 					v == 1 ? "lock xchg byte ptr [rdx], al" : "";
 
-				auto vr = vtil::amd64::registers.remap( X86_REG_RAX, 0, v );
+				auto vr = vtil_registers.remap( X86_REG_RAX, 0, v );
 				auto& p = ins.parameters;
 				fl
 					// rdx := [rsp]

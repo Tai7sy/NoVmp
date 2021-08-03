@@ -24,7 +24,7 @@ namespace vmp::arch
 	using namespace vtil::logger;
 
 	using opcode_id = std::string;
-	static constexpr char PANY = 0xAA;
+	static constexpr uint8_t PANY = 0xAA;
 
 	// In order of common-ness
 	static const std::vector<char> possible_variants = { 8, 4, 2, 1 };
@@ -65,7 +65,7 @@ namespace vmp::arch
 		// Describe its parameters
 		//
 		std::vector<uint64_t> parameters = {};
-		std::vector<char> parameter_sizes = {};
+		std::vector<uint8_t> parameter_sizes = {};
 
 		// Summarize stack operations
 		//

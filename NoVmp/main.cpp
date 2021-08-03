@@ -13,6 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
+
 #define _CRT_SECURE_NO_WARNINGS
 #ifdef _WIN32
 #include <intrin.h>
@@ -32,10 +33,6 @@
 #include "vmprotect/vm_state.hpp"
 #include "demo_compiler.hpp"
 
-#ifdef _MSC_VER
-#pragma comment(linker, "/STACK:34359738368")
-#endif
-
 using namespace vtil::logger;
 
 static std::vector<uint8_t> read_raw( const std::string& file_path )
@@ -54,7 +51,7 @@ static void write_raw( void* data, size_t size, const std::string& file_path )
 {
 	std::ofstream file( file_path, std::ios::binary );
 	if ( !file.good() ) error( "File cannot be opened for write." );
-	file.write( ( char* ) data, size );
+	file.write( ( char* ) data, (std::streamsize)size );
 }
 
 static const std::string gpl3_license_header = ""
@@ -89,7 +86,7 @@ int main( int argc, const char** argv )
 	
 	// Create the basic descriptor for the image
 	//
-	vmp::image_desc* desc = new vmp::image_desc;
+	auto desc = new vmp::image_desc;
 	desc->raw = read_raw( image_path.string() );
 	desc->override_image_base = 0;
 	desc->has_relocs = desc->get_nt_headers()->optional_header.data_directories.basereloc_directory.present();
@@ -120,7 +117,11 @@ int main( int argc, const char** argv )
 		else if ( !strcmp( argv[ i ], "-base" ) )
 		{
 			fassert( ++i < argc );
+#if _M_X64 || __x86_64__
 			desc->override_image_base = strtoull( argv[ i ], nullptr, 16 );
+#else
+			desc->override_image_base = strtoul(argv[i], nullptr, 16);
+#endif
 			desc->has_relocs = true;
 			i++;
 		}
@@ -177,14 +178,14 @@ int main( int argc, const char** argv )
 				mid_func = false;
 			else
 				continue;
-			uint32_t jmp_rva = scn->virtual_address + ( it - scn_begin ) + 5 + *( int32_t* ) &it[ 1 ];
+			uint32_t jmp_rva = scn->virtual_address + uint32_t( it - scn_begin ) + 5 + *( int32_t* ) &it[ 1 ];
 
 			// Skip if JMP target is in the same section / in a non-executable section
 			//
 			win::section_header_t* scn_jmp = desc->rva_to_section( jmp_rva );
 			if ( !scn_jmp || scn_jmp == scn || !scn_jmp->characteristics.mem_execute ) continue;
 
-			// Skip if it's not VMENTER
+			// Skip if it's not VMENTER (push imm32 + call)
 			//
 			uint8_t* jmp_target_bytes = desc->raw.data() + jmp_rva + scn_jmp->ptr_raw_data - scn_jmp->virtual_address;
 			if ( jmp_target_bytes > &desc->raw.back() ||
@@ -239,11 +240,11 @@ int main( int argc, const char** argv )
 
 		// Apply optimizations.
 		//
-		int64_t ins = rtn->num_instructions();
-		int64_t blks = rtn->num_blocks();
+		size_t ins = rtn->num_instructions();
+		size_t blks = rtn->num_blocks();
 		vtil::optimizer::apply_all_profiled( rtn );
-		int64_t oins = rtn->num_instructions();
-		int64_t oblks = rtn->num_blocks();
+		size_t oins = rtn->num_instructions();
+		size_t oblks = rtn->num_blocks();
 
 		// Write routine and optimization information.
 		//
@@ -252,18 +253,18 @@ int main( int argc, const char** argv )
 			log<CON_GRN>( "\nLifted & optimized virtual-machine at %p\n", vr->jmp_rva );
 
 			log<CON_YLW>( "Optimizer stats:\n" );
-			log<CON_CYN>( " - Block count:       %-5d => %-5d (%.2f%%).\n", blks, oblks, 100.0f * float( float( oblks - blks ) / blks ) );
-			log<CON_CYN>( " - Instruction count: %-5d => %-5d (%.2f%%).\n", ins, oins, 100.0f * float( float( oins - ins ) / ins ) );
+			log<CON_CYN>( " - Block count:       %-5d => %-5d (%.2f%%).\n", blks, oblks, 100.0f * float( float( oblks - blks ) / float(blks) ) );
+			log<CON_CYN>( " - Instruction count: %-5d => %-5d (%.2f%%).\n", ins, oins, 100.0f * float( float( oins - ins ) / float(ins) ) );
 
 			std::vector<uint8_t> bytes;
 			for ( auto& [_, block] : rtn->explored_blocks )
 			{
-				for ( auto& ins : *block )
+				for ( auto& temp_ins : *block )
 				{
-					if ( ins.base->name == "vemit" )
+					if (temp_ins.base->name == "vemit" )
 					{
-						uint8_t* bs = ( uint8_t* ) &ins.operands[ 0 ].imm().u64;
-						bytes.insert( bytes.end(), bs, bs + ins.operands[ 0 ].size() );
+						uint8_t* bs = ( uint8_t* )( uintptr_t ) &temp_ins.operands[ 0 ].imm().uval;
+						bytes.insert( bytes.end(), bs, bs + temp_ins.operands[ 0 ].size() );
 					}
 				}
 			}
@@ -273,11 +274,15 @@ int main( int argc, const char** argv )
 				log<CON_YLW>( "Special instructions:\n" );
 
 				size_t n = 0;
+#if _M_X64 || __x86_64__
 				auto dasm = vtil::amd64::disasm( bytes.data(), 0, bytes.size() );
-				for ( auto& ins : dasm )
+#else
+				auto dasm = vtil::x86::disasm(bytes.data(), 0, bytes.size());
+#endif
+				for ( auto& temp_ins : dasm )
 				{
 					n++;
-					log<CON_PRP>( " - %s\n", ins );
+					log<CON_PRP>( " - %s\n", temp_ins );
 					if ( n > 10 )
 					{
 						log<CON_PRP>( " - ...\n" );
@@ -299,7 +304,7 @@ int main( int argc, const char** argv )
 	// Lift every routine and wait for completion.
 	//
 	std::vector<std::pair<size_t, std::future<vtil::routine*>>> worker_pool;
-	for ( int i = 0; i < desc->virt_routines.size(); i++ )
+	for ( size_t i = 0; i < desc->virt_routines.size(); i++ )
 		worker_pool.emplace_back( i, std::async( /*std::launch::async*/ std::launch::deferred, vm_lifter, i ) );
 
 	for ( auto& [idx, rtn] : worker_pool )
@@ -328,7 +333,8 @@ int main( int argc, const char** argv )
 	{
 		// Page align rva high and calculate where we place the next section
 		//
-		uint32_t rva_routine = rva_sec + byte_stream.size();
+		uint32_t rva_routine = rva_sec + (uint32_t)byte_stream.size();
+		vtil::debug::dump( vr.routine );
 		std::vector substream = vtil::compile( vr.routine, rva_routine );
 
 		// Write jump to new routine.
@@ -337,7 +343,7 @@ int main( int argc, const char** argv )
 		{
 			uint8_t* jmp_rel32 = desc->rva_to_ptr<uint8_t>( vr.jmp_rva );
 			*jmp_rel32 = 0xE9;
-			*( int32_t* ) ( jmp_rel32 + 1 ) = rva_routine - ( vr.jmp_rva + 5 );
+			*( int32_t* ) ( jmp_rel32 + 1 ) = int32_t(rva_routine - ( vr.jmp_rva + 5 ));
 		}
 
 		// Append to stream.
@@ -356,11 +362,11 @@ int main( int argc, const char** argv )
 	fassert( raw_low > ( sizeof( win::section_header_t ) + desc->get_nt_headers()->optional_header.size_headers ) );
 	size_t img_original_size = desc->raw.size();
 	desc->raw.resize( img_original_size + byte_stream.size() );
-	win::image_x64_t* img = ( win::image_x64_t* ) desc->raw.data();
+    auto img = ( win::image_x64_t* ) desc->raw.data();
 
 	win::nt_headers_x64_t* nt_hdrs = img->get_nt_headers();
-	nt_hdrs->optional_header.size_code += byte_stream.size();
-	nt_hdrs->optional_header.size_image += byte_stream.size();
+	nt_hdrs->optional_header.size_code += (uint32_t)byte_stream.size();
+	nt_hdrs->optional_header.size_image += (uint32_t)byte_stream.size();
 	nt_hdrs->optional_header.size_headers += sizeof( win::section_header_t );
 
 	win::section_header_t* scn = nt_hdrs->get_section( nt_hdrs->file_header.num_sections++ );
@@ -370,9 +376,9 @@ int main( int argc, const char** argv )
 	scn->characteristics.mem_execute = 1;
 	scn->characteristics.mem_read = 1;
 	scn->virtual_address = rva_sec;
-	scn->ptr_raw_data = img_original_size;
-	scn->size_raw_data = byte_stream.size();
-	scn->virtual_size = byte_stream.size();
+	scn->ptr_raw_data = (uint32_t)img_original_size;
+	scn->size_raw_data = (uint32_t)byte_stream.size();
+	scn->virtual_size = (uint32_t)byte_stream.size();
 
 	memcpy( desc->raw.data() + img_original_size,
 			byte_stream.data(),

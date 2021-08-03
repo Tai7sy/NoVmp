@@ -28,15 +28,24 @@
 #pragma once
 #include <stdint.h>
 #include <tuple>
+#if _M_X64 || __x86_64__
 #include <vtil/amd64>
+#else
+#include <vtil/x86>
+#endif
 
 #pragma pack(push, 1)
 struct emulator
 {
-    static constexpr uint64_t default_register_value =  0xCCCCCCCCCCCCCCCC;
-    static constexpr uint64_t default_rflags_value =    0x202;
-    static constexpr size_t user_stack_size =           0x100;
-    static constexpr size_t reserved_stack_size =       0x20;
+
+#if _M_X64 || __x86_64__
+    static constexpr bool is_x64 = true;
+    using register_size_t = uint64_t;
+    static constexpr uint64_t default_register_value = 0xCCCCCCCCCCCCCCCC;
+    static constexpr uint64_t default_rflags_value = 0x202;
+    static constexpr size_t user_stack_size = 0x100;
+    static constexpr size_t reserved_stack_size = 0x20;
+
 
     // Virtual stack, must not be moved from the beginning of this structure 
     // since this pointer is used as a stack pointer.
@@ -63,10 +72,38 @@ struct emulator
     uint64_t v_r15 =    default_register_value;
     uint64_t v_rflags = default_rflags_value;
 
+#else
+    static constexpr bool is_x64 = false;
+    using register_size_t = uint32_t;
+    static constexpr uint32_t default_register_value = 0xCCCCCCCC;
+    static constexpr uint32_t default_eflags_value = 0x202;
+    static constexpr size_t user_stack_size = 0x100;
+    static constexpr size_t reserved_stack_size = 0x20;
+    
+
+    // Virtual stack, must not be moved from the beginning of this structure 
+    // since this pointer is used as a stack pointer.
+    //
+    uint32_t v_reserved_stack[ reserved_stack_size / 4 ] = { default_register_value };
+    uint32_t v_stack[ user_stack_size / 4 ] =              { default_register_value };
+
+    // Each individual register.
+    //
+    uint32_t v_eax =    default_register_value;
+    uint32_t v_ebx =    default_register_value;
+    uint32_t v_ecx =    default_register_value;
+    uint32_t v_edx =    default_register_value;
+    uint32_t v_esi =    default_register_value;
+    uint32_t v_edi =    default_register_value;
+    uint32_t v_ebp =    default_register_value;
+    uint32_t v_eflags = default_eflags_value;
+
+#endif
+
     // Internal values that must be stored, used by ::transform().
     //
-    const void* __rip = nullptr;
-    const void* __rsp = 0;
+    const void* __ip = nullptr;
+    const void* __sp = 0;
 
     // Invokes routine at the pointer given with the current context and updates the context.
     // - Template argument is a small trick to make it work with ICC, declaring a constexpr within the scope does not work.
@@ -80,10 +117,10 @@ struct emulator
 
     // Sets the value of a register.
     //
-    emulator& set( x86_reg reg, uint64_t value );
+    emulator& set( x86_reg reg, register_size_t value );
 
     // Gets the value of a register.
     //
-    uint64_t get( x86_reg reg ) const;
+    register_size_t get( x86_reg reg ) const;
 };
 #pragma pack(pop)

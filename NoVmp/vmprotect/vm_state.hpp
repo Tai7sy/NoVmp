@@ -25,7 +25,13 @@
 
 namespace vmp
 {
+
+#if _M_X64 || __x86_64__
 	using rkey_t = uint64_t;
+#else
+	using rkey_t = uint32_t;
+#endif
+	
 
 	struct rkey_value
 	{
@@ -33,12 +39,18 @@ namespace vmp
 		//
 		union
 		{
+			uintptr_t uptr;
+#if _M_X64 || __x86_64__
 			uint64_t u64;
+#endif
 			uint32_t u32;
 			uint16_t u16;
 			uint8_t u8;
 
+			intptr_t iptr;
+#if _M_X64 || __x86_64__
 			int64_t i64;
+#endif
 			int32_t i32;
 			int16_t i16;
 			int8_t i8;
@@ -54,7 +66,9 @@ namespace vmp
 		{
 			switch ( size )
 			{
+#if _M_X64 || __x86_64__
 				case 8:		return i64;
+#endif
 				case 4:		return i32;
 				case 2:		return i16;
 				case 1:		return i8;
@@ -66,7 +80,9 @@ namespace vmp
 		{
 			switch ( size )
 			{
+#if _M_X64 || __x86_64__
 				case 8:		return u64;
+#endif
 				case 4:		return u32;
 				case 2:		return u16;
 				case 1:		return u8;
@@ -87,12 +103,12 @@ namespace vmp
 
 		// Boundaries of the block within the input stream
 		//
-		std::pair<int, uint64_t> block_start;
-		std::pair<int, uint64_t> block_end;
+		std::pair<uint32_t, uint64_t> block_start;
+		std::pair<uint32_t, uint64_t> block_end;
 
 		// Size of the data
 		//
-		size_t output_size = ~0ull;
+		uint8_t output_size = 0xFF;
 
 		// Auto-resolved decryption function and the simulation context associated with it
 		//
@@ -146,11 +162,11 @@ namespace vmp
 		{
 			// If inverse stream, we substract the number of bytes being read first
 			if ( dir_vip == -1 )
-				return img->rva_to_ptr<uint8_t>( vip - num_bytes );
+				return img->rva_to_ptr<uint8_t>( uint32_t(vip - num_bytes) );
 
 			// Otherwise we use the current RVA
 			else if ( dir_vip == +1 )
-				return img->rva_to_ptr<uint8_t>( vip );
+				return img->rva_to_ptr<uint8_t>( uint32_t(vip));
 
 			// Cannot execute this operation when direction is unknown
 			unreachable();

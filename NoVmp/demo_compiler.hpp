@@ -14,7 +14,13 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 #pragma once
+#if _M_X64 || __x86_64__
 #include <vtil/amd64>
+#define COMPILER_ARCH amd64
+#else
+#include <vtil/x86>
+#define COMPILER_ARCH x86
+#endif
 #include <vtil/arch>
 #include <vtil/compiler>
 #include <vtil/io>
@@ -29,6 +35,7 @@
 //
 namespace vtil
 {
+
 	// Maximum amount of instruction we add to the block trying to free registers.
 	//
 	static constexpr float maximum_block_expansion = 1.20f; // +20%
@@ -72,7 +79,7 @@ namespace vtil
 #if COMPILER_VERBOSE_GENERATION
 			logger::log<logger::CON_YLW>( "%s", "\t" + instruction );
 #endif
-			if ( validate && amd64::assemble( instruction, rva ).empty() )
+			if ( validate && COMPILER_ARCH::assemble( instruction, rva ).empty() )
 				logger::error( "Failed assembling: %s\n", instruction );
 		}
 		std::string ref_label( vip_t vip )
@@ -101,7 +108,7 @@ namespace vtil
 			std::string address;
 			if ( base.is_physical() )
 			{
-				address = format::str( "[%s %s]", base.is_stack_pointer() ? "rsp" : amd64::name( base.combined_id ), format::offset(
+				address = format::str( "[%s %s]", base.is_stack_pointer() ? "rsp" : COMPILER_ARCH::name( (uint32_t) base.combined_id ), format::offset(
 					base.is_stack_pointer() ? offset - it->sp_offset : offset
 				) );
 			}
@@ -134,17 +141,17 @@ namespace vtil
 			if ( reg.bit_count == 1 )
 			{
 				fassert( reg.bit_offset == 0 );
-				return amd64::name( amd64::registers.remap( reg.combined_id, 0, 1 ) );
+				return COMPILER_ARCH::name( COMPILER_ARCH::registers.remap((uint32_t) reg.combined_id, 0, 1 ) );
 			}
 
 			fassert( !( reg.bit_offset & 7 ) && !( reg.bit_count & 7 ) );
-			auto mapped = amd64::registers.remap( reg.combined_id, reg.bit_offset / 8, reg.bit_count / 8 );
-			return amd64::name( mapped );
+			auto mapped = COMPILER_ARCH::registers.remap((uint32_t) reg.combined_id, reg.bit_offset / 8, reg.bit_count / 8 );
+			return COMPILER_ARCH::name( mapped );
 		}
 		std::string ref_rhs( const operand& op )
 		{
 			if ( op.is_immediate() )
-				return format::hex( op.imm().i64 );
+				return format::hex( op.imm().ival );
 
 			// TODO:
 			if ( op.reg().is_undefined() )
@@ -156,8 +163,8 @@ namespace vtil
 	static std::optional<register_desc> allocate_register( const il_iterator& it, routine_state* state, const std::function<bool( const register_desc& )>& filter = {} )
 	{
 		int64_t idx = 0;
-		for ( auto rit = amd64::preserve_all_convention.param_registers.begin();
-			  rit != amd64::preserve_all_convention.param_registers.end();
+		for ( auto rit = COMPILER_ARCH::preserve_all_convention.param_registers.begin();
+			  rit != COMPILER_ARCH::preserve_all_convention.param_registers.end();
 			  rit++, idx++ )
 		{
 			// Skip if special.
@@ -190,7 +197,7 @@ namespace vtil
 		size_t pass( basic_block* blk, bool xblock = false )
 		{
 			size_t counter = 0;
-			std::map<size_t, std::pair<size_t, il_iterator>> local_use_map;
+			std::map<uint64_t, std::pair<uint64_t, il_iterator>> local_use_map;
 			for ( auto it = blk->begin(); !it.is_end(); it++ )
 			{
 				// Skip if volatile and not imm-kicked register.
@@ -227,7 +234,7 @@ namespace vtil
 
 			// Convert into a list ordered by usage.
 			//
-			std::vector<std::tuple<size_t, size_t, il_iterator>> local_reg_list;
+			std::vector<std::tuple<uint64_t, uint64_t, il_iterator>> local_reg_list;
 			for ( auto& [k, v] : local_use_map )
 				local_reg_list.emplace_back( k, v.first, v.second );
 			std::sort( local_reg_list.begin(), local_reg_list.end(), [ ] ( auto& a, auto& b ) { return std::get<1>( a ) > std::get<1>( b ); } );
@@ -590,7 +597,7 @@ namespace vtil
 						{
 							// Skip if it is a register / valid imm32.
 							//
-							if ( !op.is_immediate() || ( op.imm().bit_count <= 32 || is_i32( op.imm().i64 ) ) )
+							if ( !op.is_immediate() || ( op.imm().bit_count <= 32 || is_i32( op.imm().ival ) ) )
 								continue;
 
 							// Force into a temporary.
@@ -627,7 +634,7 @@ namespace vtil
 		{
 			// Eliminate temporaries:
 			//
-			std::map<size_t, int64_t> local_map;
+			std::map<uint64_t, int64_t> local_map;
 			for ( auto it = blk->begin(); !it.is_end(); it++ )
 			{
 				if ( it->is_volatile() && it->vip != mvip_moveout_hint )
@@ -727,7 +734,7 @@ namespace vtil
 
 		// Pick the frame offset and assign the register to it.
 		//
-		int64_t frame_offset = state->next_frame_offset;
+		intptr_t frame_offset = state->next_frame_offset;
 		state->next_frame_offset += 8;
 		state->frame_mapping[ reg ] = frame_offset;
 
@@ -1075,7 +1082,7 @@ namespace vtil
 				operand cnt = it->operands[ 1 ];
 				
 				fassert( cnt.bit_count() >= 8 );
-				if ( cnt.is_immediate() ) cnt.imm().u64 &= 0xFF;
+				if ( cnt.is_immediate() ) cnt.imm().uval &= 0xFF;
 				else cnt.reg().bit_count = 8;
 
 				state->assemble( "shl %s, %s", state->ref_lhs( it->operands[ 0 ] ), state->ref_rhs( cnt ) );
@@ -1088,7 +1095,7 @@ namespace vtil
 				operand cnt = it->operands[ 1 ];
 
 				fassert( cnt.bit_count() >= 8 );
-				if ( cnt.is_immediate() ) cnt.imm().u64 &= 0xFF;
+				if ( cnt.is_immediate() ) cnt.imm().uval &= 0xFF;
 				else cnt.reg().bit_count = 8;
 
 				state->assemble( "shr %s, %s", state->ref_lhs( it->operands[ 0 ] ), state->ref_rhs( cnt ) );
@@ -1101,7 +1108,7 @@ namespace vtil
 				operand cnt = it->operands[ 1 ];
 
 				fassert( cnt.bit_count() >= 8 );
-				if ( cnt.is_immediate() ) cnt.imm().u64 &= 0xFF;
+				if ( cnt.is_immediate() ) cnt.imm().uval &= 0xFF;
 				else cnt.reg().bit_count = 8;
 
 				state->assemble( "rol %s, %s", state->ref_lhs( it->operands[ 0 ] ), state->ref_rhs( cnt ) );
@@ -1114,7 +1121,7 @@ namespace vtil
 				operand cnt = it->operands[ 1 ];
 
 				fassert( cnt.bit_count() >= 8 );
-				if ( cnt.is_immediate() ) cnt.imm().u64 &= 0xFF;
+				if ( cnt.is_immediate() ) cnt.imm().uval &= 0xFF;
 				else cnt.reg().bit_count = 8;
 
 				state->assemble( "ror %s, %s", state->ref_lhs( it->operands[ 0 ] ), state->ref_rhs( cnt ) );
@@ -1174,7 +1181,7 @@ namespace vtil
 				//
 				if ( it->operands[ 0 ].is_immediate() )
 				{
-					state->assemble( "!call %s", state->ref_rva( it->operands[ 0 ].imm().u64 ) );
+					state->assemble( "!call %s", state->ref_rva( it->operands[ 0 ].imm().uval ) );
 				}
 				else
 				{
@@ -1211,7 +1218,7 @@ namespace vtil
 				//
 				else if ( it->operands[ 0 ].is_immediate() )
 				{
-					state->assemble( "!jmp %s", state->ref_rva( it->operands[ 0 ].imm().u64 ) );
+					state->assemble( "!jmp %s", state->ref_rva( it->operands[ 0 ].imm().uval ) );
 				}
 				// If register:
 				//
@@ -1253,23 +1260,23 @@ namespace vtil
 
 				// Check if blocks are compiled already.
 				//
-				if ( !state->compiled.contains( dst_2.imm().u64 ) )
+				if ( !state->compiled.contains( dst_2.imm().uval ) )
 				{
 					// Insert a conditional jump to [set=1], invoke the compiler for [set=0].
 					//
 					std::string cc = state->ref_rhs( it->operands[ 0 ] );
 					state->assemble( "test %s, %s", cc, cc );
-					state->assemble( "!jnz %s", state->ref_label( dst_1.imm().u64 ) );
-					compile( it.block->owner->explored_blocks[ dst_2.imm().u64 ], state );
+					state->assemble( "!jnz %s", state->ref_label( dst_1.imm().uval ) );
+					compile( it.block->owner->explored_blocks[ dst_2.imm().uval ], state );
 				}
-				else if ( !state->compiled.contains( dst_1.imm().u64 ) )
+				else if ( !state->compiled.contains( dst_1.imm().uval ) )
 				{
 					// Insert a conditional jump to [set=0], invoke the compiler for [set=1].
 					//
 					std::string cc = state->ref_rhs( it->operands[ 0 ] );
 					state->assemble( "test %s, %s", cc, cc );
-					state->assemble( "!jz %s", state->ref_label( dst_1.imm().u64 ) );
-					compile( it.block->owner->explored_blocks[ dst_2.imm().u64 ], state );
+					state->assemble( "!jz %s", state->ref_label( dst_1.imm().uval ) );
+					compile( it.block->owner->explored_blocks[ dst_2.imm().uval ], state );
 				}
 				else
 				{
@@ -1277,8 +1284,8 @@ namespace vtil
 					//
 					std::string cc = state->ref_rhs( it->operands[ 0 ] );
 					state->assemble( "test %s, %s", cc, cc );
-					state->assemble( "!jnz %s", state->ref_label( dst_1.imm().u64 ) );
-					state->assemble( "!jmp %s", state->ref_label( dst_2.imm().u64 ) );
+					state->assemble( "!jnz %s", state->ref_label( dst_1.imm().uval ) );
+					state->assemble( "!jmp %s", state->ref_label( dst_2.imm().uval ) );
 				}
 
 				// Make sure all blocks are compiled.
@@ -1386,13 +1393,13 @@ namespace vtil
 			std::vector<uint8_t> bytes;
 			while ( it->base == &ins::vemit && !it.is_end() )
 			{
-				uint8_t* bs = ( uint8_t* ) &it->operands[ 0 ].imm().u64;
+				uint8_t* bs = ( uint8_t* ) &it->operands[ 0 ].imm().uval;
 				bytes.insert( bytes.end(), bs, bs + it->operands[ 0 ].size() );
 				it = std::next( it );
 			}
 			if ( bytes.size() )
 			{
-				auto dasm = amd64::disasm( bytes.data(), it->vip == invalid_vip ? 0 : it->vip, bytes.size() );
+				auto dasm = COMPILER_ARCH::disasm( bytes.data(), it->vip == invalid_vip ? 0 : it->vip, bytes.size() );
 				for ( auto& ins : dasm )
 					state->assemble( "%s %s", ins.mnemonic, ins.operand_string );
 			}
@@ -1489,7 +1496,7 @@ namespace vtil
 
 		// Define a helper to free up a number of registers upon request.
 		//
-		std::vector registers = amd64::preserve_all_convention.param_registers;
+		std::vector registers = COMPILER_ARCH::preserve_all_convention.param_registers;
 		auto virtualize_n = [ & ] ( size_t cnt )
 		{
 			size_t pop_cnt = 0;
@@ -1631,7 +1638,7 @@ namespace vtil
 			log<CON_GRN>( "Instruction count:  %d\n", new_ins_cnt );
 			for ( auto& [reg, offset] : state.frame_mapping )
 				log<CON_PRP>( " -- %s + 0x%-3x := %s\n", state.frame_register, offset, reg );
-			for ( int64_t offset = state.next_frame_offset; offset < new_frame_size; offset+= 8 )
+			for ( size_t offset = state.next_frame_offset; offset < new_frame_size; offset+= 8 )
 				log<CON_BLU>( " -- %s + 0x%-3x := Reserved as scratch space\n", state.frame_register, offset );
 
 			// Pass through the arch-normalization pass, handle registers again.
@@ -1693,7 +1700,7 @@ namespace vtil
 #if COMPILER_VERBOSE_GENERATION
 			log( "%s\n", state.document );
 #endif
-			return amd64::assemble( state.document, rva );
+			return COMPILER_ARCH::assemble( state.document, rva );
 		}
 		unreachable();
 	}
