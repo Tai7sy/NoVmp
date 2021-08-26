@@ -32,10 +32,49 @@ namespace vmp
 #if _M_X64 || __x86_64__
 	using vtil_instruction = vtil::amd64::instruction;
 	inline const auto& vtil_registers = vtil::amd64::registers;
-#else
+#elif _M_IX86 || __i386__
 	using vtil_instruction = vtil::x86::instruction;
     inline const auto& vtil_registers = vtil::x86::registers;
 #endif
+
+	namespace X86
+	{
+        namespace REG
+        {
+#if _M_X64 || __x86_64__
+			constexpr auto AX = X86_REG_RAX;
+			constexpr auto BX = X86_REG_RBX;
+			constexpr auto CX = X86_REG_RCX;
+			constexpr auto DX = X86_REG_RDX;
+			constexpr auto DI = X86_REG_RDI;
+			constexpr auto SI = X86_REG_RSI;
+			constexpr auto SP = X86_REG_RSP;
+			constexpr auto IP = X86_REG_RIP;
+#elif _M_IX86 || __i386__
+			constexpr auto AX = X86_REG_EAX;
+			constexpr auto BX = X86_REG_EBX;
+			constexpr auto CX = X86_REG_ECX;
+			constexpr auto DX = X86_REG_EDX;
+			constexpr auto DI = X86_REG_EDI;
+			constexpr auto SI = X86_REG_ESI;
+			constexpr auto SP = X86_REG_ESP;
+			constexpr auto IP = X86_REG_EIP;
+#endif
+        }
+
+        namespace INS
+        {
+#if _M_X64 || __x86_64__
+			constexpr auto PUSHF = X86::INS::PUSHFQ;
+			constexpr auto POPF = X86::INS::POPFQ;
+#elif _M_IX86 || __i386__
+
+			constexpr auto PUSHF = X86_INS_PUSHFD;
+			constexpr auto POPF = X86_INS_POPFD;
+#endif
+        }
+	}
+
 
 	using fn_instruction_filter = std::function<bool( const vtil_instruction& )>;
 
@@ -295,7 +334,7 @@ namespace vmp
 #if _M_X64 || __x86_64__
 			std::vector i1 = vtil::amd64::disasm( img->rva_to_ptr( rva_rip ), rva_rip );
 #else
-			std::vector i1 = vtil::x86::disasm(img->rva_to_ptr(rva_rip), rva_rip);
+			std::vector i1 = vtil::x86::disasm( img->rva_to_ptr( rva_rip ), rva_rip );
 #endif
 			fassert( !i1.empty() );
 			vtil_instruction& instruction = i1[ 0 ];

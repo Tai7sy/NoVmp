@@ -141,7 +141,7 @@ namespace vmp
 			// Push relocation offset.
 			//
 			auto treloc = block->tmp( vtil::arch::bit_count );
-			block->mov( treloc, vtil::REG_IMGBASE )
+			block->mov( treloc, vstate->reloc_delta )
 				 ->sub( treloc, vstate->img->get_real_image_base() )
 				 ->push( treloc );
 		}
@@ -372,22 +372,12 @@ namespace vmp
 					//
 					for ( auto& [id, ins] : non_virt_chunk.stream )
 					{
-#if _M_X64 || __x86_64__
-						constexpr auto register_sp = X86_REG_RSP;
-						constexpr auto ins_pushf = X86_INS_PUSHFQ;
-						constexpr auto ins_popf = X86_INS_POPFQ;
-#else
-						constexpr auto register_sp = X86_REG_ESP;
-						constexpr auto ins_pushf = X86_INS_PUSHFD;
-						constexpr auto ins_popf = X86_INS_POPFD;
-#endif
-
-						if ( ins.is( ins_pushf, {} ) )
+						if ( ins.is( X86::INS::PUSHF, {} ) )
 						{
 							block->pushf();
 							continue;
 						}
-						else if ( ins.is( ins_popf, {} ) )
+						else if ( ins.is( X86::INS::POPF, {} ) )
 						{
 							block->popf();
 							continue;
@@ -397,7 +387,7 @@ namespace vmp
 						for ( auto reg_read : ins.regs_read )
 						{
 							vtil::operand op = x86_reg( reg_read );
-							if ( reg_read == register_sp ) op = { vtil::REG_SP };
+							if ( reg_read == X86::REG::SP ) op = { vtil::REG_SP };
 							if ( reg_read == X86_REG_EFLAGS ) op = { vtil::REG_FLAGS };
 							block->vpinr( op );
 						}
@@ -408,7 +398,7 @@ namespace vmp
 						for ( auto reg_write : ins.regs_write )
 						{
 							vtil::operand op = x86_reg( reg_write );
-							fassert( reg_write != register_sp );
+							fassert( reg_write != X86::REG::SP );
 							if ( reg_write == X86_REG_EFLAGS ) op = { vtil::REG_FLAGS };
 							block->vpinw( op );
 						}

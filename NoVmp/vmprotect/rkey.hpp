@@ -75,13 +75,8 @@ namespace vmp
 			//
 			else if ( ins.is( X86_INS_XOR, { X86_OP_MEM, X86_OP_REG } ) )
 			{
-#if _M_X64 || __x86_64__
-				constexpr auto register_sp = X86_REG_RSP;
-#else
-				constexpr auto register_sp = X86_REG_ESP;
-#endif
 				return
-					ins.operands[ 0 ].mem.base == register_sp &&
+					ins.operands[ 0 ].mem.base == X86::REG::SP &&
 					ins.operands[ 0 ].mem.disp == 0 &&
 					ins.operands[ 0 ].mem.index == X86_REG_INVALID &&
 					ins.operands[ 0 ].mem.scale == 1 &&

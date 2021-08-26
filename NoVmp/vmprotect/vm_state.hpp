@@ -149,6 +149,9 @@ namespace vmp
 		//
 		rkey_t rolling_key = 0;
 
+		// Image reloc_delta
+	    size_t reloc_delta = 0;
+
 		// Unrolls all instructions for the current handler
 		//
 		instruction_stream unroll()
@@ -181,7 +184,8 @@ namespace vmp
 			uint8_t* ret = peek_vip( num_bytes );
 
 			// If invalid, throw
-			if ( !ret ) throw std::runtime_error( "Invalid VIP." );
+			if ( !ret ) 
+				throw std::runtime_error( "Invalid VIP." );
 
 			// Skip the bytes
 			vip += num_bytes * dir_vip;
@@ -233,7 +237,7 @@ namespace vmp
 			vip = new_vip;
 
 			// Calculate the new rolling key
-			rolling_key = new_vip + img->get_real_image_base();
+			rolling_key = new_vip + img->get_real_image_base() - reloc_delta;
 
 			// Calculate the new handler RVA based on the decrypted offset and the self reference point
 			current_handler_rva = self_ref_rva + decrypt_vip( off_dec_block, 4 ).i32;
