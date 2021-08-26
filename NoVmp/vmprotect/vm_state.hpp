@@ -108,7 +108,7 @@ namespace vmp
 
 		// Size of the data
 		//
-		uint8_t output_size = 0xFF;
+		size_t output_size = (size_t) ~0ull;
 
 		// Auto-resolved decryption function and the simulation context associated with it
 		//

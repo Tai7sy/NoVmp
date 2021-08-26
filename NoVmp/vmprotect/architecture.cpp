@@ -611,26 +611,26 @@ namespace vmp::arch
 
 						// [[ 00000001400FD732: mov  rax, qword ptr [r10 + 8]
 						i_read_vsp( vstate, is[ 0 ], +sz, var[ 0 ] ) &&
-						vtil_registers.extend( is[ 0 ].operands[ 0 ].reg ) == X86_REG_RAX &&
+						vtil_registers.extend( is[ 0 ].operands[ 0 ].reg ) == X86::REG::AX &&
 
 						// [[ 00000001400FD740: mov  rdx, qword ptr [r10]
 						i_read_vsp( vstate, is[ 1 ], 0, var[ 0 ] ) &&
-						vtil_registers.extend( is[ 1 ].operands[ 0 ].reg ) == X86_REG_RDX &&
+						vtil_registers.extend( is[ 1 ].operands[ 0 ].reg ) == X86::REG::DX &&
 						
 						// [[ 00000001400FD750: sub  r10, 8
 						i_shift_vsp( vstate, is[ 2 ], -vtil::arch::size ) &&
 
 						// [[ 00000001400FD75F: MUL rdx
 						is[ 3 ].is( X86_INS_MUL, { X86_OP_REG } ) &&
-						vtil_registers.extend( is[ 3 ].operands[ 0 ].reg ) == X86_REG_RDX &&
+						vtil_registers.extend( is[ 3 ].operands[ 0 ].reg ) == X86::REG::DX &&
 
 						// [[ 00000001400FD769: mov  qword ptr [r10 + 8], rdx
 						i_write_vsp( vstate, is[ 4 ], +vtil::arch::size, var[ 0 ] ) &&
-						vtil_registers.extend( is[ 4 ].operands[ 1 ].reg ) == X86_REG_RDX &&
+						vtil_registers.extend( is[ 4 ].operands[ 1 ].reg ) == X86::REG::DX &&
 
 						// [[ 00000001400FD76D: mov  qword ptr [r10 + 0x10], rax
 						i_write_vsp( vstate, is[ 5 ], +vtil::arch::size + sz, var[ 0 ] ) &&
-						vtil_registers.extend( is[ 5 ].operands[ 1 ].reg ) == X86_REG_RAX &&
+						vtil_registers.extend( is[ 5 ].operands[ 1 ].reg ) == X86::REG::AX &&
 
 						// [[ 00000001400FD778: pushfq
 						// [[ 00000001400FD779: pop  qword ptr [r10]

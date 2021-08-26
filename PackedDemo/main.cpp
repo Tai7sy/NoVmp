@@ -11,6 +11,9 @@
 #endif
 
 extern "C" int __stdcall func1();
+extern "C" int __stdcall func2();
+extern "C" int __stdcall func3();
+extern "C" int __stdcall func4();
 
 static volatile intptr_t _o;
 
@@ -51,9 +54,12 @@ __declspec(dllexport, noinline) int test_entry_point(intptr_t r, intptr_t b)
 
 int main()
 {
-    func1();
-    auto val = test_entry_point(3, 17);
-    printf("Output: %x \n", val);
+    printf("func1: %x \n", func1());
+    printf("func2: %x \n", func2());
+    printf("func3: %x \n", func3());
+    printf("func4: %x \n", func4());
+
+    printf("Output: %x \n", test_entry_point(3, 17));
     getchar();
     return 0;
 }

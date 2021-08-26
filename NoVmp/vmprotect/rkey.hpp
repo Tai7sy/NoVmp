@@ -171,7 +171,7 @@ namespace vmp
 		// Iterate entire instruction stream:
 		//
 		std::vector<rkey_block> out;
-		for ( size_t iterator = 0; iterator != -1 && iterator < is.stream.size(); )
+		for ( int iterator = 0; iterator != -1 && iterator < (int) is.stream.size(); )
 		{
 			// Try to extract the next block
 			//

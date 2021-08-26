@@ -443,9 +443,16 @@ namespace vmp
 			// End of pushed registers, reset stream
 			if ( stack.size() == 8 + 2 && 
 				 is[ i ].is( X86_INS_MOV, { X86_OP_REG,  X86_OP_IMM } ) ) {
-				reg_reloc_delta = is[ i ].operands[ 0 ].reg;
-				is.erase( i - 1 );
-				break;
+
+				if ( is.next( X86_INS_PUSH, { X86_OP_REG }, [ & ]( const vtil_instruction& ins )
+						{
+							return ins.operands[ 0 ].reg == is[ i ].operands[ 0 ].reg;
+						}, i) != -1 )
+				{
+					reg_reloc_delta = is[ i ].operands[ 0 ].reg;
+					is.erase( i - 1 );
+					break;
+				}
 			}
 		}
 
