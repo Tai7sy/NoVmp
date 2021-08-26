@@ -65,8 +65,8 @@ namespace vmp
         namespace INS
         {
 #if _M_X64 || __x86_64__
-			constexpr auto PUSHF = X86::INS::PUSHFQ;
-			constexpr auto POPF = X86::INS::POPFQ;
+			constexpr auto PUSHF = X86_INS_PUSHFQ;
+			constexpr auto POPF = X86_INS_POPFQ;
 #elif _M_IX86 || __i386__
 
 			constexpr auto PUSHF = X86_INS_PUSHFD;

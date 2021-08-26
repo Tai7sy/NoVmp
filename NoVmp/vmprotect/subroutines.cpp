@@ -496,7 +496,12 @@ namespace vmp
 
 		// Find value of reloc_delta, eg: mov edx, 547E0000h
 		//
-		int i_load_reloc_delta_id = is.next( X86_INS_MOV, { X86_OP_REG, X86_OP_IMM }, [ & ] ( const vtil_instruction& ins )
+#if _M_X64 || __x86_64__
+		constexpr auto load_reloc_delta_ins = X86_INS_MOVABS;
+#else
+		constexpr auto load_reloc_delta_ins = X86_INS_MOV;
+#endif
+		int i_load_reloc_delta_id = is.next( load_reloc_delta_ins, { X86_OP_REG, X86_OP_IMM }, [ & ] ( const vtil_instruction& ins )
 		{
 			return ins.operands[ 0 ].reg == reg_reloc_delta;
 		} );
@@ -699,7 +704,7 @@ namespace vmp
 
 				// Strip any assigning pre-mutation
 				//
-				for ( size_t i = prefix_out.size() - 1; i >= 0; i-- )
+				for ( int i = (int) prefix_out.size() - 1; i >= 0; i-- )
 				{
 					if ( prefix_out[ i ].is( X86_INS_MOV, { X86_OP_REG, X86_OP_REG } ) ||
 						 prefix_out[ i ].is( X86_INS_XCHG, { X86_OP_REG, X86_OP_REG } ) )
