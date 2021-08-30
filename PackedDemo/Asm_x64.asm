@@ -23,9 +23,14 @@ func3 endp
 
 func4 proc
 	mov eax, 1111h
-	shl eax, 16
+	shl eax, 18h
 	ret
 func4 endp
 
+func5 proc
+	mov eax, 1111h
+	rol eax, 18h
+	ret
+func5 endp
 
 END

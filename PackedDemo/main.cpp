@@ -10,11 +10,6 @@
 #pragma comment(lib, "VMProtectSDK32.lib")
 #endif
 
-extern "C" int __stdcall func1();
-extern "C" int __stdcall func2();
-extern "C" int __stdcall func3();
-extern "C" int __stdcall func4();
-
 static volatile intptr_t _o;
 
 template<typename T>
@@ -52,12 +47,19 @@ __declspec(dllexport, noinline) int test_entry_point(intptr_t r, intptr_t b)
     return k;
 }
 
+extern "C" int __stdcall func1();
+extern "C" int __stdcall func2();
+extern "C" int __stdcall func3();
+extern "C" int __stdcall func4();
+extern "C" int __stdcall func5();
+
 int main()
 {
-    printf("func1: %x \n", func1());
-    printf("func2: %x \n", func2());
-    printf("func3: %x \n", func3());
-    printf("func4: %x \n", func4());
+    printf("func1: %08x \n", func1());
+    printf("func2: %08x \n", func2());
+    printf("func3: %08x \n", func3());
+    printf("func4: %08x \n", func4());
+    printf("func5: %08x \n", func5());
 
     printf("Output: %x \n", test_entry_point(3, 17));
     getchar();
