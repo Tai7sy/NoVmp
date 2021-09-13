@@ -141,7 +141,7 @@ namespace vmp
 			// Push relocation offset.
 			//
 			auto treloc = block->tmp( vtil::arch::bit_count );
-			block->mov( treloc, vstate->reloc_delta )
+			block->mov( treloc, vtil::REG_IMGBASE)
 				 ->sub( treloc, vstate->img->get_real_image_base() )
 				 ->push( treloc );
 		}
@@ -265,7 +265,7 @@ namespace vmp
 							//
 							block->wback().base = &vtil::ins::vxcall;
 							block->wback().vip = vstate->vip;
-							block->shift_sp( 8, false, block->end() );
+							block->shift_sp( vtil::arch::size, false, block->end() );
 
 							/* TODO:
 							// Check if it's alloca_probe inserted by the compiler, in which case we can ignore

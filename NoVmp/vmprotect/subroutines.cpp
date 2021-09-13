@@ -136,6 +136,7 @@ namespace vmp
 			}
 			// Self references are always logged
 			//
+#if _M_X64 || __x86_64__
 			if ( ins.is( X86_INS_LEA, { X86_OP_REG, X86_OP_MEM } ) &&
 				 ins.operands[ 1 ].mem.disp == -7 &&
 				 ins.operands[ 1 ].mem.scale == 1 &&
@@ -147,6 +148,19 @@ namespace vmp
 				is_reduced.stream.push_back( is.stream[ i ] );
 				continue;
 			}
+#else
+			if (ins.is(X86_INS_LEA, { X86_OP_REG, X86_OP_MEM }) &&
+				ins.operands[1].mem.disp == (vstate->img->get_mapped_image_base() + ins.address) &&
+				ins.operands[1].mem.scale == 1 &&
+				ins.operands[1].mem.base == X86_REG_INVALID &&
+				ins.operands[1].mem.index == X86_REG_INVALID)
+			{
+				// Do not trace till the ADD of the jump destination calculation though
+				//
+				is_reduced.stream.push_back(is.stream[i]);
+				continue;
+			}
+#endif
 			// PUSHFQ is always logged
 			//
 			if ( ins.is( X86::INS::PUSHF, {} ) )
@@ -637,9 +651,21 @@ namespace vmp
 		{
 			x86_reg vip_from = ins_read_vsp.operands[ 0 ].reg;
 
+
 			// Find the mutation end point
 			//
-			int i_mut_end = is.next( X86_INS_MOVABS, { X86_OP_REG, X86_OP_IMM } );
+#if _M_X64 || __x86_64__
+			int i_mut_end = is.next(X86_INS_MOVABS, { X86_OP_REG, X86_OP_IMM });
+#else
+			
+			// vtil::logger::log<CON_RED>("%s\n", is.to_string().c_str());
+			int i_mut_end = is.next(X86_INS_MOV, { X86_OP_REG, X86_OP_IMM }, [&](const vtil_instruction& ins)
+			{
+				// where's deobfuscator?
+				return (ins.operands[1].imm & 0xFFF) == 0;
+			});
+			
+#endif
 			if ( i_mut_end != -1 )
 			{
 				// Map all registers and resolve their final value
@@ -658,7 +684,7 @@ namespace vmp
 					// Make sure it matches our instruction type and extract registers
 					//
 					if ( ins.operands.size() != 2 ) continue;
-					if ( ins.operands[ 0 ].size != 8 ) continue;
+					if ( ins.operands[ 0 ].size != vtil::arch::size) continue;
 
 					if ( ins.is( X86_INS_MOV, { X86_OP_REG, X86_OP_REG } ) )
 					{

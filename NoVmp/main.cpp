@@ -226,7 +226,6 @@ int main( int argc, const char** argv )
 		vmp::vm_state state = { desc, vr->jmp_rva };
 		vtil::routine* rtn = lift_il( &state );
 		if ( !rtn ) return nullptr;
-
 		// Save unoptimized routine.
 		//
 		vtil::save_routine( 
@@ -240,11 +239,11 @@ int main( int argc, const char** argv )
 
 		// Apply optimizations.
 		//
-		size_t ins = rtn->num_instructions();
-		size_t blks = rtn->num_blocks();
+		int ins = rtn->num_instructions();
+		int blks = rtn->num_blocks();
 		vtil::optimizer::apply_all_profiled( rtn );
-		size_t oins = rtn->num_instructions();
-		size_t oblks = rtn->num_blocks();
+		int oins = rtn->num_instructions();
+		int oblks = rtn->num_blocks();
 
 		// Write routine and optimization information.
 		//
@@ -291,7 +290,9 @@ int main( int argc, const char** argv )
 				}
 			}
 		}
-
+		if (0) {
+			vtil::debug::dump(rtn);
+		}
 		// Save optimized routine.
 		//
 		vtil::save_routine(
