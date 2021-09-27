@@ -1,6 +1,29 @@
 
 .CODE
 
+func_call_dummy proc
+	mov eax, ecx
+	ret
+func_call_dummy endp
+
+func_call proc
+	mov ecx, 1
+	call func_call_dummy
+	ret
+func_call endp
+
+func_loop proc
+	mov eax, 0
+
+	LOOP_BEGIN:
+	cmp eax, 2
+	jg LOOP_END
+	inc eax
+	jmp LOOP_BEGIN
+
+	LOOP_END:
+	ret
+func_loop endp
 
 func1 proc
 	mov eax, 1111h

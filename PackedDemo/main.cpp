@@ -31,7 +31,7 @@ __forceinline intptr_t test_type(const T& value) // so that we pass a stack
 }
 __declspec(dllexport, noinline) int test_entry_point(intptr_t r, intptr_t b)
 {
-    VMProtectBegin(0);
+    VMProtectBegin(__FUNCTION__);
     int k = 4;
     for (int i = 0; i < 8; i++, r++, b--) {
         k += printf("uint8_t:  %p\n", test_type<uint8_t>(r * b));
@@ -47,20 +47,43 @@ __declspec(dllexport, noinline) int test_entry_point(intptr_t r, intptr_t b)
     return k;
 }
 
+__declspec(dllexport, noinline) int func_loop2()
+{
+    int a = 1;
+    for (int i=0; i<2; i++)
+    {
+        a++;
+    }
+    return a;
+}
+
+__declspec(dllexport, noinline) int func_call2(int a)
+{
+    printf_s("%d \r\n", a);
+    return a;
+}
+
 extern "C" int __stdcall func1();
 extern "C" int __stdcall func2();
 extern "C" int __stdcall func3();
 extern "C" int __stdcall func4();
 extern "C" int __stdcall func5();
+extern "C" int __stdcall func_call();
+extern "C" int __stdcall func_loop();
 
 int main()
 {
+    func_call();
     printf("func1: %08x \n", func1());
     printf("func2: %08x \n", func2());
     printf("func3: %08x \n", func3());
     printf("func4: %08x \n", func4());
     printf("func5: %08x \n", func5());
 
+    printf("func_call: %08x \n", func_call());
+    printf("func_call: %08x \n", func_call2(1));
+    printf("func_loop: %08x \n", func_loop());
+    printf("func_loop: %08x \n", func_loop2());
     printf("Output: %x \n", test_entry_point(3, 17));
     getchar();
     return 0;

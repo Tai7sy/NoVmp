@@ -141,7 +141,8 @@ namespace vmp
 			// Push relocation offset.
 			//
 			auto treloc = block->tmp( vtil::arch::bit_count );
-			block->mov( treloc, vstate->reloc_delta )
+			// using vtil::REG_IMGBASE may cause wrong result when x86?
+			block->mov( treloc, vtil::REG_IMGBASE )
 				 ->sub( treloc, vstate->img->get_real_image_base() )
 				 ->push( treloc );
 		}
