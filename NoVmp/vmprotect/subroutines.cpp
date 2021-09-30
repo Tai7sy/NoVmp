@@ -355,7 +355,7 @@ namespace vmp
 		//
 		if ( i_fwd == -1 && i_bwd != -1 ) state->dir_vip = -1;
 		else if ( i_fwd != -1 && i_bwd == -1 ) state->dir_vip = +1;
-		else if ( i_fwd != -1 && i_bwd != -1 ) state->dir_vip = i_fwd > i_bwd ? -1 : +1;
+		else if ( i_fwd != -1 && i_bwd != -1 ) state->dir_vip = i_fwd > i_bwd ? +1 : -1;
 		else unreachable();
 	}
 
