@@ -70,7 +70,7 @@ namespace vmp
 
 	static vtil::register_desc make_virtual_register( uint8_t context_offset, uint8_t size )
 	{
-		fassert( ( ( context_offset & 7 ) + size ) <= 8 && size );
+		fassert( ( ( context_offset & (vtil::arch::size-1)) + size ) <= vtil::arch::size && size );
 
 		return {
 			vtil::register_virtual,
@@ -195,25 +195,47 @@ namespace vmp
 				auto& p = ins.parameters;
 				auto [a0, a1, d, c] = fl->tmp( v * 8, v * 8, v * 8, v * 8 );
 
-				fl
-					// t0 := [rsp]
-					// t1 := [rsp+*]
-					// t2 := [rsp+2*]
-					->pop( d ) // d
-					->pop( a0 ) // a
-					->pop( c ) // c
-					->mov( a1, a0 )
+				if ( v == 1 )
+				{
+					auto ax0 = fl->tmp(16);
 
-					// div 
-					->div( a0, d, c )
-					->rem( a1, d, c )
+					fl
+						->pop( a0 )
+						->pop( c )
+						->mov( a1, a0 )
 
-					// [rsp] := flags
-					// [rsp+8] := t0
-					// [rsp+8+*] := t1
-					->push( a0 )
-					->push( a1 )
-					->pushf();
+						->div( a0, 0, c )
+						->rem( a1, 0, c )
+
+						->mov( ax0, a1 )
+						->bshl( ax0, 8 )
+						->bor( ax0, a0 )
+
+						->push( ax0 )
+						->pushf();
+				}
+				else
+				{
+					fl
+						// t0 := [rsp]
+						// t1 := [rsp+*]
+						// t2 := [rsp+2*]
+						->pop( d ) // d
+						->pop( a0 ) // a
+						->pop( c ) // c
+						->mov( a1, a0 )
+
+						// div 
+						->div( a0, d, c )
+						->rem( a1, d, c )
+
+						// [rsp] := flags
+						// [rsp+8] := t0
+						// [rsp+8+*] := t1
+						->push( a0 )
+						->push( a1 )
+						->pushf();
+				}
 			}
 		},
 		{
@@ -222,25 +244,47 @@ namespace vmp
 			{
 				auto& p = ins.parameters;
 				auto [a0, a1, d] = fl->tmp( v * 8, v * 8, v * 8 );
+				if (v == 1) 
+				{
+					auto a2 = fl->tmp(16);
+					fl
+						// t0 := [rsp]
+						// t1 := [rsp+*]
+						->pop( d ) // d
+						->pop( a0 ) // a
+						->mov( a2, a0 )
 
-				fl
-					// t0 := [rsp]
-					// t1 := [rsp+*]
-					->pop( d ) // d
-					->pop( a0 ) // a
-					->mov( a1, a0 )
+						// mul
+						->mul( a2, d )
+						//->upflg( vtil::REG_FLAGS ) TODO
 
-					// mul
-					->mul( a0, d )
-					->mulhi( a1, d )
-					//->upflg( vtil::REG_FLAGS ) TODO
+						// [rsp] := flags
+						// [rsp+8] := t0
+						// [rsp+8+*] := t1
+						->push( a2 )
+						->pushf();
+				}
+				else 
+				{
+					fl
+						// t0 := [rsp]
+						// t1 := [rsp+*]
+						->pop( d ) // d
+						->pop( a0 ) // a
+						->mov( a1, a0 )
 
-					// [rsp] := flags
-					// [rsp+8] := t0
-					// [rsp+8+*] := t1
-					->push( a0 )
-					->push( a1 )
-					->pushf();
+						// mul
+						->mul( a0, d )
+						->mulhi( a1, d )
+						//->upflg( vtil::REG_FLAGS ) TODO
+
+						// [rsp] := flags
+						// [rsp+8] := t0
+						// [rsp+8+*] := t1
+						->push( a0 )
+						->push( a1 )
+						->pushf();
+				}
 			}
 		},
 		{
@@ -249,26 +293,48 @@ namespace vmp
 			{
 				auto& p = ins.parameters;
 				auto [a0, a1, d, c] = fl->tmp( v * 8, v * 8, v * 8, v * 8 );
+				
+				if ( v == 1 )
+				{
+					auto ax0 = fl->tmp(16);
 
-				fl
-					// t0 := [rsp]
-					// t1 := [rsp+*]
-					// t2 := [rsp+2*]
-					->pop( d ) // d
-					->pop( a0 ) // a
-					->pop( c ) // c
-					->mov( a1, a0 )
+					fl
+						->pop( a0 )
+						->pop( c )
+						->mov( a1, a0 )
 
-					// idiv 
-					->idiv( a0, d, c )
-					->irem( a1, d, c )
+						->idiv( a0, 0, c )
+						->irem( a1, 0, c )
 
-					// [rsp] := flags
-					// [rsp+8] := t0
-					// [rsp+8+*] := t1
-					->push( a0 )
-					->push( a1 )
-					->pushf();
+						->mov( ax0, a1 )
+						->bshl( ax0, 8 )
+						->bor( ax0, a0 )
+
+						->push( ax0 )
+						->pushf();
+				}
+				else
+				{
+					fl
+						// t0 := [rsp]
+						// t1 := [rsp+*]
+						// t2 := [rsp+2*]
+						->pop( d ) // d
+						->pop( a0 ) // a
+						->pop( c ) // c
+						->mov( a1, a0 )
+
+						// idiv 
+						->idiv( a0, d, c )
+						->irem( a1, d, c )
+
+						// [rsp] := flags
+						// [rsp+8] := t0
+						// [rsp+8+*] := t1
+						->push( a0 )
+						->push( a1 )
+						->pushf();
+				}
 			}
 		},
 		{
@@ -277,29 +343,56 @@ namespace vmp
 			{
 				auto& p = ins.parameters;
 				auto [a0, a1, d] = fl->tmp( v * 8, v * 8, v * 8 );
+				if (v == 1) 
+				{
+					auto a2 = fl->tmp(16);
+					auto a3 = fl->tmp(16);
+					fl
+						// t0 := [rsp]
+						// t1 := [rsp+*]
+						->pop( d ) // d
+						->pop( a0 ) // a
+						->movsx( a2, a0 )
+						->movsx( a3, d )
+						// imul
+						->imul( a2, a3 )
+						//->upflg( vtil::REG_FLAGS ) TODO
+						->mov( FLAG_SF, vtil::UNDEFINED )
+						->mov( FLAG_ZF, vtil::UNDEFINED )
+						->mov( FLAG_OF, vtil::UNDEFINED )
+						->mov( FLAG_CF, vtil::UNDEFINED )
 
-				fl
-					// t0 := [rsp]
-					// t1 := [rsp+*]
-					->pop( d ) // d
-					->pop( a0 ) // a
-					->mov( a1, a0 )
+						// [rsp] := flags
+						// [rsp+8] := t0
+						// [rsp+8+*] := t1
+						->push( a2 )
+						->pushf();
+				}
+				else 
+				{
+					fl
+						// t0 := [rsp]
+						// t1 := [rsp+*]
+						->pop( d ) // d
+						->pop( a0 ) // a
+						->mov( a1, a0 )
 
-					// imul
-					->imul( a0, d )
-					->imulhi( a1, d )
-					//->upflg( vtil::REG_FLAGS ) TODO
-					->mov( FLAG_SF, vtil::UNDEFINED )
-					->mov( FLAG_ZF, vtil::UNDEFINED )
-					->mov( FLAG_OF, vtil::UNDEFINED )
-					->mov( FLAG_CF, vtil::UNDEFINED )
+						// imul
+						->imul( a0, d )
+						->imulhi( a1, d )
+						//->upflg( vtil::REG_FLAGS ) TODO
+						->mov( FLAG_SF, vtil::UNDEFINED )
+						->mov( FLAG_ZF, vtil::UNDEFINED )
+						->mov( FLAG_OF, vtil::UNDEFINED )
+						->mov( FLAG_CF, vtil::UNDEFINED )
 
-					// [rsp] := flags
-					// [rsp+8] := t0
-					// [rsp+8+*] := t1
-					->push( a0 )
-					->push( a1 )
-					->pushf();
+						// [rsp] := flags
+						// [rsp+8] := t0
+						// [rsp+8+*] := t1
+						->push( a0 )
+						->push( a1 )
+						->pushf();
+				}
 			}
 		},
 		{
