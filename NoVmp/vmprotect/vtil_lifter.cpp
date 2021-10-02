@@ -434,7 +434,17 @@ namespace vmp
 			vtil::vip_t vip_params = vstate->vip;
 			std::vector<std::pair<rkey_block*, rkey_value>> parameters;
 			for ( rkey_block& rkblock : rkblocks )
-				parameters.push_back( { &rkblock, vstate->decrypt_vip( rkblock ) } );
+			{
+				rkey_value value = {};
+				value.uptr = 0;
+				value.size = 4;
+
+				// Fix Out-of-bounds read
+				//
+				if ( prefixss.size() == 0 )
+					value = vstate->decrypt_vip( rkblock );
+				parameters.push_back( { &rkblock, value } );
+			}
 
 			// Reduce the instruction handler chunk, classify the IL instruction associated
 			//
