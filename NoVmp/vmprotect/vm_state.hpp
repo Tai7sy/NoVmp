@@ -188,7 +188,10 @@ namespace vmp
 				throw std::runtime_error( "Invalid VIP." );
 
 			// Skip the bytes
-			vip += num_bytes * dir_vip;
+			if ( dir_vip == -1 )
+				vip -= num_bytes;
+			else
+				vip += num_bytes;
 
 			// Return the output
 			return ret;
