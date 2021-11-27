@@ -57,7 +57,7 @@ namespace vmp
 			return ins.is( X86_INS_XOR, { X86_OP_REG, X86_OP_REG } ) &&
 				   vtil_registers.extend( ins.operands[ 1 ].reg ) == out.rolling_key_register;
 		};
-		auto epilogue_filter = [ & ] ( const vtil_instruction& ins )
+		auto epilogue_filter_type_1 = [ & ] ( const vtil_instruction& ins )
 		{
 			// Type #1
 			// [ xor r8, rbp ]
@@ -68,12 +68,16 @@ namespace vmp
 					vtil_registers.extend( ins.operands[ 0 ].reg ) == out.rolling_key_register &&
 					ins.operands[ 1 ].reg == out.output_register;
 			}
+			return false;
+		};
+		auto epilogue_filter_type_2 = [ & ]( const vtil_instruction& ins )
+		{
 			// Type #2
 			// [ push r8					]
 			// [ xor  dword ptr [rsp], edi	]
 			// [ pop  r8					]
 			//
-			else if ( ins.is( X86_INS_XOR, { X86_OP_MEM, X86_OP_REG } ) )
+			if ( ins.is( X86_INS_XOR, { X86_OP_MEM, X86_OP_REG } ) )
 			{
 				return
 					ins.operands[ 0 ].mem.base == X86::REG::SP &&
@@ -98,7 +102,18 @@ namespace vmp
 
 		// Find the next epilogue, increment the iterator and try the next prologue if we fail to do so
 		//
-		int epilogue_index = is.next( epilogue_filter, prologue_index + 1 );
+		int epilogue_index = is.next( epilogue_filter_type_1, prologue_index + 1 );
+#if _M_X64 || __x86_64__
+		int epilogue_index_type_2 = is.next( epilogue_filter_type_2, prologue_index + 1 );
+
+		if ( epilogue_index_type_2 != -1 )
+		{
+			if ( epilogue_index != -1 )
+				vtil::logger::log( "Correction! epilogue_index %d to %d\n", epilogue_index, epilogue_index_type_2 );
+			epilogue_index = epilogue_index_type_2;
+		}
+#endif
+
 		if ( epilogue_index == -1 ) return extract_next_rkey_block( state, is, prologue_index + 1 );
 		out.block_end = { epilogue_index, is[ epilogue_index ].address };
 
