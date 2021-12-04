@@ -333,7 +333,7 @@ int main( int argc, const char** argv )
 	{
 		// Page align rva high and calculate where we place the next section
 		//
-		uint32_t rva_routine = rva_sec + (uint32_t)byte_stream.size();
+		uint32_t rva_routine = rva_sec + (uint32_t) byte_stream.size();
 		vtil::debug::dump( vr.routine );
 		std::vector substream = vtil::compile( vr.routine, rva_routine );
 
@@ -343,7 +343,7 @@ int main( int argc, const char** argv )
 		{
 			uint8_t* jmp_rel32 = desc->rva_to_ptr<uint8_t>( vr.jmp_rva );
 			*jmp_rel32 = 0xE9;
-			*( int32_t* ) ( jmp_rel32 + 1 ) = int32_t(rva_routine - ( vr.jmp_rva + 5 ));
+			*( int32_t* ) ( jmp_rel32 + 1 ) = int32_t( rva_routine - ( vr.jmp_rva + 5 ) );
 		}
 
 		// Append to stream.
@@ -365,8 +365,8 @@ int main( int argc, const char** argv )
     auto img = ( win::image_x64_t* ) desc->raw.data();
 
 	win::nt_headers_x64_t* nt_hdrs = img->get_nt_headers();
-	nt_hdrs->optional_header.size_code += (uint32_t)byte_stream.size();
-	nt_hdrs->optional_header.size_image += (uint32_t)byte_stream.size();
+	nt_hdrs->optional_header.size_code += (uint32_t) byte_stream.size();
+	nt_hdrs->optional_header.size_image += (uint32_t) byte_stream.size();
 	nt_hdrs->optional_header.size_headers += sizeof( win::section_header_t );
 
 	win::section_header_t* scn = nt_hdrs->get_section( nt_hdrs->file_header.num_sections++ );
@@ -376,9 +376,9 @@ int main( int argc, const char** argv )
 	scn->characteristics.mem_execute = 1;
 	scn->characteristics.mem_read = 1;
 	scn->virtual_address = rva_sec;
-	scn->ptr_raw_data = (uint32_t)img_original_size;
-	scn->size_raw_data = (uint32_t)byte_stream.size();
-	scn->virtual_size = (uint32_t)byte_stream.size();
+	scn->ptr_raw_data = (uint32_t) img_original_size;
+	scn->size_raw_data = (uint32_t) byte_stream.size();
+	scn->virtual_size = (uint32_t) byte_stream.size();
 
 	memcpy( desc->raw.data() + img_original_size,
 			byte_stream.data(),

@@ -25,6 +25,15 @@ func_loop proc
 	ret
 func_loop endp
 
+func_cmp proc
+	mov eax, 0
+	cmp ecx, 1
+	je CMP_END
+	mov eax, 1
+	CMP_END:
+	ret
+func_cmp endp
+
 func1 proc
 	mov eax, 1111h
 	mov ebx, 2222h

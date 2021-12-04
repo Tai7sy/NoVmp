@@ -63,6 +63,14 @@ __declspec(dllexport, noinline) int func_call2(int a)
     return a;
 }
 
+__declspec(dllexport, noinline) void string1()
+{
+    auto str = VMProtectDecryptStringA("Hello");
+    printf_s("%s\r\n", str);
+    VMProtectFreeString(str);
+}
+
+
 extern "C" int __stdcall func1();
 extern "C" int __stdcall func2();
 extern "C" int __stdcall func3();
@@ -70,6 +78,7 @@ extern "C" int __stdcall func4();
 extern "C" int __stdcall func5();
 extern "C" int __stdcall func_call();
 extern "C" int __stdcall func_loop();
+extern "C" int __fastcall func_cmp();
 
 int main()
 {
@@ -84,7 +93,12 @@ int main()
     printf("func_call: %08x \n", func_call2(1));
     printf("func_loop: %08x \n", func_loop());
     printf("func_loop: %08x \n", func_loop2());
-    printf("Output: %x \n", test_entry_point(3, 17));
+
+    printf("func_complex: %x \n", test_entry_point(3, 17));
+
+
+    printf("string: "); string1();
+
     getchar();
     return 0;
 }
