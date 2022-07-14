@@ -115,7 +115,7 @@ namespace vmp
 				 ins.operands[ 0 ].mem.base == X86::REG::SP &&
 				 vtil_registers.extend( ins.operands[ 1 ].reg ) == vtil_registers.extend( parameters.back().first->output_register ) )
 			{
-				vtil::logger::error( "Why there is still a key block ??? " );
+				// vtil::logger::warning( "Why there is still a key block ??? " );
 				continue;
 			}
 
@@ -134,19 +134,31 @@ namespace vmp
 			{
 				continue;
 			}
+
 			// Self references are always logged
 			//
+#if _M_X64 || __x86_64__
+			// lea	r9, [rip - 7] 
 			if ( ins.is( X86_INS_LEA, { X86_OP_REG, X86_OP_MEM } ) &&
 				 ins.operands[ 1 ].mem.disp == -7 &&
 				 ins.operands[ 1 ].mem.scale == 1 &&
 				 ins.operands[ 1 ].mem.base == X86_REG_RIP &&
 				 ins.operands[ 1 ].mem.index == X86_REG_INVALID )
+#else
+			// lea	edi, [0x4963c1]
+			if ( ins.is(X86_INS_LEA, { X86_OP_REG, X86_OP_MEM }) && 
+				 ins.operands[ 1 ].mem.disp == vstate->img->get_mapped_image_base() + ins.address &&
+				 ins.operands[ 1 ].mem.scale == 1 &&
+				 ins.operands[ 1 ].mem.base == X86_REG_INVALID &&
+				 ins.operands[ 1 ].mem.index == X86_REG_INVALID )
+#endif
 			{
 				// Do not trace till the ADD of the jump destination calculation though
 				//
 				is_reduced.stream.push_back( is.stream[ i ] );
 				continue;
 			}
+
 			// PUSHFQ is always logged
 			//
 			if ( ins.is( X86::INS::PUSHF, {} ) )
@@ -639,7 +651,17 @@ namespace vmp
 
 			// Find the mutation end point
 			//
-			int i_mut_end = is.next( X86_INS_MOVABS, { X86_OP_REG, X86_OP_IMM } );
+#if _M_X64 || __x86_64__
+			constexpr auto mut_end_ins = X86_INS_MOVABS;
+#else
+			constexpr auto mut_end_ins = X86_INS_MOV;
+#endif
+			int i_mut_end = is.next( mut_end_ins, { X86_OP_REG, X86_OP_IMM } , [ & ] ( const vtil_instruction& ins )
+			{
+				auto reloc_value = vstate->img->get_real_image_base() - vstate->img->get_mapped_image_base();
+				return ins.operands[ 0 ].size == vtil::arch::size && 
+					ins.operands[ 1 ].imm == reloc_value;
+			} );
 			if ( i_mut_end != -1 )
 			{
 				// Map all registers and resolve their final value
@@ -658,7 +680,7 @@ namespace vmp
 					// Make sure it matches our instruction type and extract registers
 					//
 					if ( ins.operands.size() != 2 ) continue;
-					if ( ins.operands[ 0 ].size != 8 ) continue;
+					if ( ins.operands[ 0 ].size != vtil::arch::size ) continue;
 
 					if ( ins.is( X86_INS_MOV, { X86_OP_REG, X86_OP_REG } ) )
 					{
@@ -707,7 +729,6 @@ namespace vmp
 				if ( pfx_end == 0 && vip_inh.size() >= 2 ) pfx_end = vip_inh[ 1 ].first;
 
 				prefix_out.stream = { is.stream.begin(), is.stream.begin() + pfx_end };
-				reduce_chunk( vstate, prefix_out, {}, false );
 
 				// Strip any assigning pre-mutation
 				//
@@ -718,19 +739,22 @@ namespace vmp
 						prefix_out.stream.erase( prefix_out.stream.begin() + i );
 				}
 
+				reduce_chunk( vstate, prefix_out, {}, false );
+
 				// Assign the new registers
 				//
 				vstate->reg_vip = vip_inh[ 0 ].second;
 				vstate->reg_vsp = vsp_inh.empty() ? vstate->reg_vsp : vsp_inh.back().second;
 				vstate->reg_vrk = vip_inh[ 1 ].second;
 
-				// Update instruction stream direction
-				update_vip_direction( vstate, is );
-
 				// Erase all instruction prior to the mutation so the 
 				// IL conversion does not get confused
 				//
 				is.erase( i_mut_end );
+
+				// Update instruction stream direction
+				update_vip_direction( vstate, is );
+
 			}
 		}
 

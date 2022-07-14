@@ -1711,6 +1711,9 @@ namespace vmp::arch
 			out.parameters = { 0xCC };
 			out.parameter_sizes = { 1 };
 		}
+
+		// vtil::logger::log("%X %s \n", vstate->current_handler_rva, out.stream.to_string().data());
+
 		return out;
 	}
 };

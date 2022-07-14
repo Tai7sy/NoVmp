@@ -21,7 +21,8 @@
 #include "architecture.hpp"
 #include "il2vtil.hpp"
 
-#define DISCOVERY_VERBOSE_OUTPUT 0
+#define DISCOVERY_VERBOSE_OUTPUT 1
+#define VMP_IL_VERBOSE_OUTPUT    1
 
 namespace vmp
 {
@@ -443,6 +444,10 @@ namespace vmp
 			is.stream.insert( is.stream.begin(), prefixss.stream.begin(), prefixss.stream.end() );
 			arch::instruction il_instruction = arch::classify( vstate, is );
 
+#ifdef VMP_IL_VERBOSE_OUTPUT
+			vtil::logger::log( "%08X %s \r\n", vstate->current_handler_rva , il_instruction);
+#endif
+
 			// If there was a self-reference point in the handler
 			//
 			if ( self_ref_point.has_value() )
@@ -555,7 +560,7 @@ namespace vmp
 					const auto explorer = [ & ] ( vtil::vip_t dst )
 					{
 #if DISCOVERY_VERBOSE_OUTPUT
-						log<CON_GRN>( "Exploring branch => %p\n", dst );
+						log<CON_GRN>( "Exploring branch => %X \n", dst );
 #endif
 						vm_state vstate_dup = *vstate;
 						vstate_dup.vip = dst + ( vstate->dir_vip < 0 ? +1 : 0 );
