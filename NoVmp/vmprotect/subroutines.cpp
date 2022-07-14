@@ -512,23 +512,6 @@ namespace vmp
 		fassert( i_load_vip_id != -1 );
 		vstate->reg_vip = is[ i_load_vip_id ].operands[ 0 ].reg;
 
-
-		// Find value of reloc_delta, eg: mov edx, 547E0000h
-		//
-#if _M_X64 || __x86_64__
-		constexpr auto load_reloc_delta_ins = X86_INS_MOVABS;
-#else
-		constexpr auto load_reloc_delta_ins = X86_INS_MOV;
-#endif
-		int i_load_reloc_delta_id = is.next( load_reloc_delta_ins, { X86_OP_REG, X86_OP_IMM }, [ & ] ( const vtil_instruction& ins )
-		{
-			return ins.operands[ 0 ].reg == reg_reloc_delta;
-		} );
-		fassert(i_load_reloc_delta_id != -1);
-
-		vstate->reloc_delta = (size_t) is[ i_load_reloc_delta_id ].operands[ 1 ].imm;
-
-
 		// Find the first ADD r, x or LEA r, [r+x] ( For example: lea rsi, [rsi+rbp], which add vip with reloc_delta )
 		//
 		auto vip_d_epi_filter = [ & ] ( const vtil_instruction& ins )
@@ -554,6 +537,21 @@ namespace vmp
 		fassert( i_add_base_id != -1 );
 
 
+		// Find value of reloc_delta, eg: mov edx, 547E0000h
+		//
+#if _M_X64 || __x86_64__
+		constexpr auto load_reloc_delta_ins = X86_INS_MOVABS;
+#else
+		constexpr auto load_reloc_delta_ins = X86_INS_MOV;
+#endif
+		int i_load_reloc_delta_id = is.prev( load_reloc_delta_ins, { X86_OP_REG, X86_OP_IMM }, [ & ] ( const vtil_instruction& ins )
+		{
+			return ins.operands[ 0 ].reg == reg_reloc_delta;
+		}, i_add_base_id );
+		fassert(i_load_reloc_delta_id != -1);
+
+		vstate->reloc_delta = (size_t) is[ i_load_reloc_delta_id ].operands[ 1 ].imm;
+
 
 		// Extract the VIP decryption code and wrap with a lambda
 		//
@@ -563,6 +561,9 @@ namespace vmp
 			i_load_vip_id + 1
 		);
 		fassert( vip_dec_ss_dep.empty() );
+
+
+
 
 		// Delete the stream before i_add_base_id
 		//
@@ -658,9 +659,8 @@ namespace vmp
 #endif
 			int i_mut_end = is.next( mut_end_ins, { X86_OP_REG, X86_OP_IMM } , [ & ] ( const vtil_instruction& ins )
 			{
-				auto reloc_value = vstate->img->get_real_image_base() - vstate->img->get_mapped_image_base();
 				return ins.operands[ 0 ].size == vtil::arch::size && 
-					ins.operands[ 1 ].imm == reloc_value;
+					ins.operands[ 1 ].imm == vstate->reloc_delta;
 			} );
 			if ( i_mut_end != -1 )
 			{
