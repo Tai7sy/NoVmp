@@ -241,11 +241,11 @@ int main( int argc, const char** argv )
 
 		// Apply optimizations.
 		//
-		int64_t ins = (int64_t)rtn->num_instructions();
-		int64_t blks = (int64_t)rtn->num_blocks();
+		int32_t ins = (int32_t)rtn->num_instructions();
+		int32_t blks = (int32_t)rtn->num_blocks();
 		vtil::optimizer::apply_all_profiled( rtn );
-		int64_t oins = (int64_t)rtn->num_instructions();
-		int64_t oblks = (int64_t)rtn->num_blocks();
+		int32_t oins = (int32_t)rtn->num_instructions();
+		int32_t oblks = (int32_t)rtn->num_blocks();
 
 		// Write routine and optimization information.
 		//
