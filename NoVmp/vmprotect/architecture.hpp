@@ -64,7 +64,7 @@ namespace vmp::arch
 
 		// Describe its parameters
 		//
-		std::vector<uint64_t> parameters = {};
+		std::vector<uintptr_t> parameters = {};
 		std::vector<uint8_t> parameter_sizes = {};
 
 		// Summarize stack operations
@@ -77,6 +77,17 @@ namespace vmp::arch
 		//
 		std::set<uint8_t> context_reads = {};
 		std::set<uint8_t> context_writes = {};
+
+		std::string to_string() const
+		{
+			std::stringstream ss;
+
+			ss << op << " ";
+
+			ss << vtil::format::as_string(parameters) << " ";
+
+			return ss.str();
+		}
 	};
 
 	instruction classify( vm_state* vstate, const instruction_stream& is );

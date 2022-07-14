@@ -229,6 +229,7 @@ int main( int argc, const char** argv )
 
 		// Save unoptimized routine.
 		//
+		vtil::debug::dump( rtn );
 		vtil::save_routine( 
 			rtn, 
 			( working_directory / vtil::format::str( "%p.premature.vtil", vr->jmp_rva ) ).string()
