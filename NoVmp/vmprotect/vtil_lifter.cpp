@@ -145,6 +145,7 @@ namespace vmp
 			// using vtil::REG_IMGBASE may cause wrong result when x86?
 			block->mov( treloc, vtil::REG_IMGBASE )
 				 ->sub( treloc, vstate->img->get_real_image_base() )
+				 ->add( treloc, vstate->reloc_delta )
 				 ->push( treloc );
 		}
 		else
@@ -508,11 +509,8 @@ namespace vmp
 					//
 					vtil::/*cached_*/tracer tracer = {};
 					std::vector<vtil::vip_t> destination_list;
-#if _M_X64 || __x86_64__
+
 					uint64_t image_base = vstate->img->has_relocs ? 0 : vstate->img->get_real_image_base();
-#else
-					uint64_t image_base = vstate->img->has_relocs ? vstate->reloc_delta : vstate->img->get_real_image_base();
-#endif
 					auto branch_info = vtil::optimizer::aux::analyze_branch( block, &tracer, { .pack = true } );
 #if DISCOVERY_VERBOSE_OUTPUT
 					log( "CC: %s\n", branch_info.cc );
