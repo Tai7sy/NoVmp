@@ -32,6 +32,7 @@
 #include "vmprotect/vtil_lifter.hpp"
 #include "vmprotect/vm_state.hpp"
 #include "demo_compiler.hpp"
+#include "asmjit_compiler.hpp"
 
 using namespace vtil::logger;
 
@@ -100,6 +101,7 @@ int main( int argc, const char** argv )
 	// Parse options:
 	//
 	bool compile = false;
+	bool compile_asmjit = false;
 	bool optimize = true;
 	std::vector<uint32_t> target_vms;
 	for ( int i = 2; i < argc; )
@@ -139,6 +141,32 @@ int main( int argc, const char** argv )
 		{
 			i++;
 			compile = true;
+		}
+		else if ( !strcmp( argv[ i ], "-experimental:recompile:asmjit" ) )
+		{
+			i++;
+			compile = true;
+			compile_asmjit = true;
+
+
+			// debug
+			if ( 0 ) {
+				auto block = vtil::basic_block::begin( 0x401000 );
+				vtil::register_desc reg_ax( vtil::register_physical, X86_REG_RAX, vtil::arch::bit_count, 0 );
+				vtil::register_desc reg_bx( vtil::register_physical, X86_REG_RBX, vtil::arch::bit_count, 0 );
+
+				block->mov( reg_ax, 0 );
+				block->mov( reg_bx, 2 );
+				block->add( reg_ax, reg_bx );
+
+				block->mul( reg_bx, reg_ax );
+				block->mulhi( reg_bx, reg_ax );
+
+				asmjit_compiler::compile( block->owner, 0x400000, 0x1000 );
+
+				__debugbreak();
+			}
+
 		}
 		else
 		{
@@ -336,7 +364,15 @@ int main( int argc, const char** argv )
 		//
 		uint32_t rva_routine = rva_sec + (uint32_t) byte_stream.size();
 		vtil::debug::dump( vr.routine );
-		std::vector substream = vtil::compile( vr.routine, rva_routine );
+		std::vector<uint8_t> substream;
+		
+		if ( compile_asmjit ) { 
+			substream = asmjit_compiler::compile( vr.routine, rva_routine, desc->get_real_image_base() );
+		}
+		else {
+			// Old demo compile engine
+			substream = vtil::compile( vr.routine, rva_routine );
+		}
 
 		// Write jump to new routine.
 		//

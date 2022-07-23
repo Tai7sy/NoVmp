@@ -4,3 +4,6 @@
 [submodule "linux-pe"]
 	path = linux-pe
 	url = https://github.com/can1357/linux-pe
+[submodule "asmjit"]
+	path = asmjit
+	url = https://github.com/asmjit/asmjit.git
