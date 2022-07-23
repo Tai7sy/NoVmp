@@ -132,7 +132,7 @@
       <LinkTimeCodeGeneration>Default</LinkTimeCodeGeneration>
       <StackCommitSize>
       </StackCommitSize>
-      <StackReserveSize>268435456</StackReserveSize>
+      <StackReserveSize>536870912</StackReserveSize>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -199,7 +199,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <StackCommitSize>
       </StackCommitSize>
-      <StackReserveSize>268435456</StackReserveSize>
+      <StackReserveSize>536870912</StackReserveSize>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
