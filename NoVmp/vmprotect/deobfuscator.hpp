@@ -240,7 +240,7 @@ namespace vmp
 				  const std::vector<x86_op_type>& operands,
 				  int from = 0 ) const
 		{
-			for ( size_t i = from; i < stream.size(); i++ )
+			for ( int i = from; i < ( int ) stream.size(); i++ )
 				if ( stream[ i ].second.is( instruction_id, operands ) ) return i;
 			return -1;
 		}
@@ -248,7 +248,7 @@ namespace vmp
 		int next( const fn_instruction_filter& filter,
 				  int from = 0 ) const
 		{
-			for ( size_t i = from; i < stream.size(); i++ )
+			for ( int i = from; i < ( int ) stream.size(); i++ )
 				if ( filter( stream[ i ].second ) ) return i;
 			return -1;
 		}
@@ -258,7 +258,7 @@ namespace vmp
 				  const fn_instruction_filter& filter,
 				  int from = 0 ) const
 		{
-			for ( size_t i = from; i < stream.size(); i++ )
+			for ( int i = from; i < ( int ) stream.size(); i++ )
 				if ( stream[ i ].second.is( instruction_id, operands ) && filter( stream[ i ].second ) ) return i;
 			return -1;
 		}
